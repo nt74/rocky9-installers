@@ -50,7 +50,7 @@ BM_SDK_MD5="3db11e07c032e9d17db8ad79d8b382de"
 BM_DRV="https://drive.usercontent.google.com/download?id=1KEp4Q9589DLNk1PASKQHrhVOuKBLP2rg&confirm=y"
 BM_DRV_MD5="117b9ee5dfb9b50a1c704dd2093a4bb7"
 
-# Prompt user with yes/no before Continuing
+# Prompt user with yes/no before continuing
 while true
 do
 	read -r -p "Install ffmpeg with Decklink, Intel QSV and NVIDIA GPU support? (y/n) " yesno
