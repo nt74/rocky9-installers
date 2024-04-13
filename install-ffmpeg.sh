@@ -1,8 +1,8 @@
 #!/bin/bash
 # Author: Nikos Toutountzoglou, nikos.toutountzoglou@svt.se
 # Script: install-ffmpeg.sh
-# Description: Install ffmpeg with Decklink, Intel QSV and NVIDIA GPU support
-# Revision: 1.0
+# Description: Install ffmpeg with Decklink, Intel QSV, NVIDIA GPU and AMF-AMD GPU support
+# Revision: 1.1
 
 # Check Linux distro
 if [ -f /etc/os-release ]; then
@@ -53,7 +53,7 @@ BM_DRV_MD5="117b9ee5dfb9b50a1c704dd2093a4bb7"
 # Prompt user with yes/no before continuing
 while true
 do
-	read -r -p "Install ffmpeg with Decklink, Intel QSV and NVIDIA GPU support? (y/n) " yesno
+	read -r -p "Install ffmpeg with Decklink, Intel QSV, NVIDIA GPU and AMF-AMD GPU support? (y/n) " yesno
 	case "$yesno" in
 		n|N) exit 0;;
 		y|Y) break;;
@@ -118,6 +118,7 @@ echo "Installing prerequisite packages."
 sudo dnf install \
 	autoconf \
 	automake \
+ 	AMF-devel \
 	cmake \
 	intel-gmmlib-devel \
 	intel-mediasdk-devel \
@@ -225,6 +226,7 @@ export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:/usr/lib/pkgconfig:/usr/lib64/pkgconfig
 	--prefix='/usr' \
 	--disable-htmlpages \
 	--disable-debug \
+ 	--enable-amf \
 	--enable-decklink \
 	--enable-gpl \
 	--enable-libdrm \
