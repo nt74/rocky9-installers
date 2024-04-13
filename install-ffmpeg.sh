@@ -1,7 +1,7 @@
 #!/bin/bash
 # Author: Nikos Toutountzoglou, nikos.toutountzoglou@svt.se
 # Script: install-ffmpeg.sh
-# Description: Install ffmpeg with Decklink, Intel QSV and NVIDA GPU support
+# Description: Install ffmpeg with Decklink, Intel QSV and NVIDIA GPU support
 # Revision: 1.0
 
 # Check Linux distro
@@ -27,7 +27,7 @@ else
 	exit 1
 fi
 
-# Update rocky distros
+# Check if distro is Rocky Linux 9
 if [ $OS = "rocky" ] && [ $OS_ID = "9" ]; then
 	echo "Detected 'Rocky Linux 9'. Continuing."
 else
@@ -218,7 +218,7 @@ sudo ldconfig
 sudo updatedb
 
 # Install ffmpeg release n7.0
-echo "Installing 'ffmpeg'."
+echo "Installing 'ffmpeg' version ${PKGVER}."
 cd ${PKGNAME}-n${PKGVER}
 export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:/usr/lib/pkgconfig:/usr/lib64/pkgconfig"
 ./configure \
