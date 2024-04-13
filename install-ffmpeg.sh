@@ -91,6 +91,15 @@ echo "Extracting files 'decklink_sdk.tar.gz' and 'decklink.tar.gz'"
 tar -xf decklink_sdk.tar.gz
 tar -xf decklink.tar.gz
 
+# Enable Extra Packages for Enterprise Linux 9
+echo "Enable EPEL, CRB and Development Tools."
+sudo dnf install epel-release
+sudo /usr/bin/crb enable
+# Enable Development Tools
+sudo dnf groupinstall "Development Tools"
+# Update package repos cache
+sudo dnf makecache
+
 # Install SDK libs and DeviceConfigure binary
 echo "Installing Decklink SDK libraries."
 sudo cp -v -r --no-preserve=ownership "Blackmagic_DeckLink_SDK_12.8/Linux/include"/* /usr/include
@@ -105,14 +114,6 @@ echo "Make sure to import 'mokutil key' in UEFI systems with Secure Boot enabled
 
 # Prerequisites
 
-# Enable Extra Packages for Enterprise Linux 9
-echo "Enable EPEL, CRB and Development Tools."
-sudo dnf install epel-release
-sudo /usr/bin/crb enable
-# Enable Development Tools
-sudo dnf groupinstall "Development Tools"
-# Update package repos cache
-sudo dnf makecache
 # Packages necessary for building ffmpeg
 echo "Installing prerequisite packages."
 sudo dnf install \
