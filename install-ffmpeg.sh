@@ -78,9 +78,9 @@ md5sum -c <<< "${BM_SDK_MD5} decklink_sdk.tar.gz"
 md5sum -c <<< "${BM_DRV_MD5} decklink.tar.gz"
 
 if [ $? -eq 0 ]; then
-	echo "Downloaded files succesfully passed MD5 checksum test. Continuing."
+	echo "Downloaded files have successfully passed MD5 checksum test. Continuing."
 else
-	echo "Downloaded files failed to pass MD5 checksum test. Exiting." 
+	echo "Downloaded files have failed to pass MD5 checksum test. Exiting." 
 	exit 1
 fi
 
