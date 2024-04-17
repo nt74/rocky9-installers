@@ -2,7 +2,7 @@
 # Author: Nikos Toutountzoglou, nikos.toutountzoglou@svt.se
 # Script: install-ffmpeg.sh
 # Description: Install ffmpeg with Decklink, Intel QSV, NVIDIA GPU and AMF-AMD GPU support
-# Revision: 1.1
+# Revision: 1.2
 
 # Check Linux distro
 if [ -f /etc/os-release ]; then
@@ -141,6 +141,7 @@ sudo dnf install \
 	ocl-icd-devel \
 	openssl-devel \
 	openjpeg2-devel \
+ 	openh264-devel \
 	pkgconf-pkg-config \
 	perl-devel \
 	SDL2-devel \
@@ -233,6 +234,7 @@ export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:/usr/lib/pkgconfig:/usr/lib64/pkgconfig
 	--enable-libdrm \
 	--enable-libopenjpeg \
 	--enable-libklvanc \
+ 	--enable-libopenh264 \
 	--enable-libssh \
 	--enable-libsrt \
 	--enable-libvpl \
