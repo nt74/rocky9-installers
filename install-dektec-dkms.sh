@@ -77,7 +77,7 @@ sudo dnf makecache
 # Install decklink driver RPM package
 echo "Installing 'dektec-dkms' via RPM package."
 sudo dnf install dkms kernel-headers-$(uname -r)
-sudo rpm -ivh ${PKGNAME}-${PKGVER}-0.el9.noarch.rpm
+sudo rpm -Uvh ${PKGNAME}-${PKGVER}-0.el9.noarch.rpm
 
 # Exit
 echo "All done. Downloaded sources are stored in folder '${WORKDIR}'."
