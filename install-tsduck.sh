@@ -94,7 +94,7 @@ chmod +x install-prerequisites.sh
 
 # Install decklink driver RPM package
 echo "Installing 'tsduck' via RPM package."
-sudo rpm -ivh ${PKGNAME}-${PKGVER}.el9.x86_64.rpm
+sudo rpm -Uvh ${PKGNAME}-${PKGVER}.el9.x86_64.rpm
 
 # Exit
 echo "All done. Downloaded sources are stored in folder '${WORKDIR}'."
