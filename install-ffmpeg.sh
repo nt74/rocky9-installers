@@ -109,7 +109,7 @@ sudo cp -v --no-preserve=ownership "Blackmagic_DeckLink_SDK_12.8/Linux/Samples/b
 # Install decklink driver RPM package
 echo "Installing Decklink drivers via RPM package."
 sudo dnf install dkms kernel-headers-$(uname -r)
-sudo rpm -ivh "Blackmagic_Desktop_Video_Linux_12.8.1/rpm/x86_64/desktopvideo-12.8.1a1.x86_64.rpm"
+sudo rpm -Uvh "Blackmagic_Desktop_Video_Linux_12.8.1/rpm/x86_64/desktopvideo-12.8.1a1.x86_64.rpm"
 echo "Make sure to import 'mokutil key' in UEFI systems with Secure Boot enabled."
 
 # Prerequisites
