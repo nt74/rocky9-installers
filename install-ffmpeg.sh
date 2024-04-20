@@ -73,8 +73,8 @@ curl -o decklink_sdk.tar.gz -L ${BM_SDK}
 curl -o decklink.tar.gz -L ${BM_DRV}
 
 # Checksum
-md5sum -c <<< "${FFMPEG_MD5} ${PKGNAME}-n${PKGVER}.tar.gz"
-md5sum -c <<< "${BM_SDK_MD5} decklink_sdk.tar.gz"
+md5sum -c <<< "${FFMPEG_MD5} ${PKGNAME}-n${PKGVER}.tar.gz" && \
+md5sum -c <<< "${BM_SDK_MD5} decklink_sdk.tar.gz" && \
 md5sum -c <<< "${BM_DRV_MD5} decklink.tar.gz"
 
 if [ $? -eq 0 ]; then
