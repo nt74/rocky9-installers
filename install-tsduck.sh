@@ -75,7 +75,7 @@ curl -LO ${PREREQ}
 curl -LO ${LICENSE}
 
 # Checksum
-md5sum -c <<< "${TSDUCK_MD5} ${PKGNAME}-${PKGVER}.el9.x86_64.rpm"
+md5sum -c <<< "${TSDUCK_MD5} ${PKGNAME}-${PKGVER}.el9.x86_64.rpm" && \
 md5sum -c <<< "${PREREQ_MD5} install-prerequisites.sh"
 
 if [ $? -eq 0 ]; then
