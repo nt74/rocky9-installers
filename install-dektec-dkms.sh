@@ -39,10 +39,10 @@ fi
 WORKDIR="$HOME/src/release/dektec"
 
 # Dektec DKMS RPM package
-DEKTEC_DKMS_VER="https://github.com/tsduck/dektec-dkms/releases/download/v2024.01.0/dektec-dkms-2024.01.0-0.el9.noarch.rpm"
-DEKTEC_DKMS_MD5="432b2d31a19a499b599e8e2db5f15881"
 PKGNAME="dektec-dkms"
-PKGVER="2024.01.0"
+PKGVER="2024.04.0"
+DEKTEC_DKMS_VER="https://github.com/tsduck/${PKGNAME}/releases/download/v${PKGVER}/${PKGNAME}-${PKGVER}-0.el9.noarch.rpm"
+DEKTEC_DKMS_MD5="3c8466dd64808ddb53e30d77d4544e73"
 
 # Prompt user with yes/no before continuing
 while true
