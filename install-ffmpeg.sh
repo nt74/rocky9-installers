@@ -75,7 +75,7 @@ curl -o decklink.tar.gz -L ${BM_DRV}
 # Checksum
 md5sum -c <<< "${FFMPEG_MD5} ${PKGNAME}-n${PKGVER}.tar.gz" && \
 md5sum -c <<< "${BM_SDK_MD5} decklink_sdk.tar.gz" && \
-md5sum -c <<< "${BM_DRV_MD5} decklink.tar.gz"
+md5sum -c <<< "${BM_DRV_MD5} decklink.tar.gz" || exit 1
 
 if [ $? -eq 0 ]; then
 	echo "Downloaded files have successfully passed MD5 checksum test. Continuing."
