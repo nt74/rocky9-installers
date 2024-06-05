@@ -63,7 +63,7 @@ echo "Downloading 'dektec-dkms' from upstream source."
 curl -LO ${DEKTEC_DKMS_VER}
 
 # Checksum
-md5sum -c <<< "${DEKTEC_DKMS_VER} ${PKGNAME}-${PKGVER}-0.el9.noarch.rpm"
+md5sum -c <<< "${DEKTEC_DKMS_MD5} ${PKGNAME}-${PKGVER}-0.el9.noarch.rpm" || exit 1
 
 # Enable Extra Packages for Enterprise Linux 9
 echo "Enable EPEL, CRB and Development Tools."
