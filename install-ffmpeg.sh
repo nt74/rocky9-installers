@@ -2,7 +2,7 @@
 # Author: Nikos Toutountzoglou, nikos.toutountzoglou@svt.se
 # Script: install-ffmpeg.sh
 # Description: Install ffmpeg with Decklink, Intel QSV, NVIDIA GPU and AMF-AMD GPU support
-# Revision: 1.2
+# Revision: 1.3
 
 # Check Linux distro
 if [ -f /etc/os-release ]; then
@@ -39,16 +39,18 @@ fi
 WORKDIR="$HOME/src/release"
 
 # FFmpeg
-FFMPEG_VER="https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n7.0.tar.gz"
-FFMPEG_MD5="863b21e113d5fc7d7fd88f852fa11493"
+FFMPEG_VER="https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n7.0.1.tar.gz"
+FFMPEG_MD5="ad3a6a42520c4a9b42498dea28ec7f44"
 PKGNAME="FFmpeg"
-PKGVER="7.0"
+PKGVER="7.0.1"
 
-# Blackmagic Decklink Drivers (v12.8.1) and SDK (v12.8)
-BM_SDK="https://drive.usercontent.google.com/download?id=1fhrMWzObej_y4trdQocvKUY38zZhqwtl&confirm=y"
-BM_SDK_MD5="3db11e07c032e9d17db8ad79d8b382de"
-BM_DRV="https://drive.usercontent.google.com/download?id=1KEp4Q9589DLNk1PASKQHrhVOuKBLP2rg&confirm=y"
-BM_DRV_MD5="117b9ee5dfb9b50a1c704dd2093a4bb7"
+# Blackmagic Decklink Drivers and SDK
+BM_SDK="https://drive.usercontent.google.com/download?id=1cCm1kiBptMm6mR8-UlD1RKSPnZ3VCv5g&confirm=y"
+BM_SDK_MD5="84f50563cf4a7cb311fe73ea9ed10d27"
+BM_SDK_VER="14.0"
+BM_DRV="https://drive.usercontent.google.com/download?id=1UicO_CSX27sus0pmsFxhZ-nienH1Mosk&confirm=y"
+BM_DRV_MD5="cd80deda73dcd2d421a653610c551805"
+BM_DRV_VER="14.0.1"
 
 # Prompt user with yes/no before continuing
 while true
@@ -68,7 +70,7 @@ cd ${WORKDIR}
 echo "Downloading FFmpeg from upstream source."
 curl -o ${PKGNAME}-n${PKGVER}.tar.gz -LO ${FFMPEG_VER}
 # Decklink Drivers and SDK upstream source
-echo "Downloading Decklink Drivers (12.8.1) and SDK (12.8)."
+echo "Downloading Decklink Drivers v${BM_DRV_VER} and SDK v${BM_SDK_VER}."
 curl -o decklink_sdk.tar.gz -L ${BM_SDK}
 curl -o decklink.tar.gz -L ${BM_DRV}
 
@@ -97,14 +99,14 @@ sudo dnf makecache
 
 # Install SDK libs and DeviceConfigure binary
 echo "Installing Decklink SDK libraries."
-sudo cp -v -r --no-preserve='ownership' "Blackmagic_DeckLink_SDK_12.8/Linux/include"/* /usr/include
+sudo cp -v -r --no-preserve='ownership' "Blackmagic_DeckLink_SDK_${BM_SDK_VER}/Linux/include"/* /usr/include
 echo "Installing Decklink 'DeviceConfigure' binary in '/usr/local/bin' folder."
-sudo cp -v --no-preserve='ownership' "Blackmagic_DeckLink_SDK_12.8/Linux/Samples/bin/x86_64/DeviceConfigure" /usr/local/bin
+sudo cp -v --no-preserve='ownership' "Blackmagic_DeckLink_SDK_${BM_SDK_VER}/Linux/Samples/bin/x86_64/DeviceConfigure" /usr/local/bin
 
 # Install decklink driver RPM package
 echo "Installing Decklink drivers via RPM package."
 sudo dnf install dkms kernel-headers-$(uname -r)
-sudo rpm -Uvh "Blackmagic_Desktop_Video_Linux_12.8.1/rpm/x86_64/desktopvideo-12.8.1a1.x86_64.rpm"
+sudo rpm -Uvh "Blackmagic_Desktop_Video_Linux_${BM_DRV_VER}/rpm/x86_64/desktopvideo-${BM_DRV_VER}a2.x86_64.rpm"
 echo "Make sure to import 'mokutil key' in UEFI systems with Secure Boot enabled."
 
 # Prerequisites
@@ -215,7 +217,7 @@ echo "Updating 'ldconfig' and 'updatedb'."
 sudo ldconfig
 sudo updatedb
 
-# Install ffmpeg release n7.0
+# Install ffmpeg
 echo "Installing 'ffmpeg' version ${PKGVER}."
 cd ${PKGNAME}-n${PKGVER}
 export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:/usr/lib/pkgconfig:/usr/lib64/pkgconfig"
