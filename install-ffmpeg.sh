@@ -77,12 +77,7 @@ md5sum -c <<< "${FFMPEG_MD5} ${PKGNAME}-n${PKGVER}.tar.gz" && \
 md5sum -c <<< "${BM_SDK_MD5} decklink_sdk.tar.gz" && \
 md5sum -c <<< "${BM_DRV_MD5} decklink.tar.gz" || exit 1
 
-if [ $? -eq 0 ]; then
-	echo "Downloaded files have successfully passed MD5 checksum test. Continuing."
-else
-	echo "Downloaded files have failed to pass MD5 checksum test. Exiting." 
-	exit 1
-fi
+echo "Downloaded files have successfully passed MD5 checksum test. Continuing."
 
 # Unpack
 echo "Extracting file '${PKGNAME}-n${PKGVER}.tar.gz'"
@@ -102,9 +97,9 @@ sudo dnf makecache
 
 # Install SDK libs and DeviceConfigure binary
 echo "Installing Decklink SDK libraries."
-sudo cp -v -r --no-preserve=ownership "Blackmagic_DeckLink_SDK_12.8/Linux/include"/* /usr/include
+sudo cp -v -r --no-preserve='ownership' "Blackmagic_DeckLink_SDK_12.8/Linux/include"/* /usr/include
 echo "Installing Decklink 'DeviceConfigure' binary in '/usr/local/bin' folder."
-sudo cp -v --no-preserve=ownership "Blackmagic_DeckLink_SDK_12.8/Linux/Samples/bin/x86_64/DeviceConfigure" /usr/local/bin
+sudo cp -v --no-preserve='ownership' "Blackmagic_DeckLink_SDK_12.8/Linux/Samples/bin/x86_64/DeviceConfigure" /usr/local/bin
 
 # Install decklink driver RPM package
 echo "Installing Decklink drivers via RPM package."
@@ -176,7 +171,7 @@ echo "Installing 'libx264'."
 git clone https://code.videolan.org/videolan/x264.git
 cd x264
 ./configure \
-	--prefix=/usr \
+	--prefix='/usr' \
 	--enable-shared \
 	--enable-pic \
 	--enable-lto \
@@ -200,7 +195,7 @@ echo "Installing 'libzvbi' (Teletext)."
 curl -LO https://sourceforge.net/projects/zapping/files/zvbi/0.2.35/zvbi-0.2.35.tar.bz2
 tar -xf zvbi-0.2.35.tar.bz2
 cd zvbi-0.2.35
-./configure --prefix=/usr --sbindir=/usr/bin
+./configure --prefix='/usr' --sbindir='/usr/bin'
 make
 sudo make install
 cd ${WORKDIR}
