@@ -158,7 +158,7 @@ echo "Enable NVIDIA CUDA Toolkit repo."
 sudo dnf config-manager \
 	--add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel9/x86_64/cuda-rhel9.repo
 sudo dnf clean all
-sudo dnf install cuda-toolkit-12-4
+sudo dnf install cuda-toolkit-12-5
 
 # Install ffnvcodec-headers
 echo "Installing 'ffnvcodec-headers'."
