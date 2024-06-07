@@ -2,7 +2,7 @@
 # Author: Nikos Toutountzoglou, nikos.toutountzoglou@svt.se
 # Script: install-ffmpeg.sh
 # Description: Install ffmpeg with Decklink, Intel QSV, NVIDIA GPU and AMF-AMD GPU support
-# Revision: 1.3
+# Revision: 1.4
 
 # Check Linux distro
 if [ -f /etc/os-release ]; then
@@ -158,7 +158,9 @@ echo "Enable NVIDIA CUDA Toolkit repo."
 sudo dnf config-manager \
 	--add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel9/x86_64/cuda-rhel9.repo
 sudo dnf clean all
+sudo dnf remove cuda-toolkit-12-4
 sudo dnf install cuda-toolkit-12-5
+sudo ldconfig
 
 # Install ffnvcodec-headers
 echo "Installing 'ffnvcodec-headers'."
