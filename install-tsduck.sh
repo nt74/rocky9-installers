@@ -78,13 +78,8 @@ curl -LO ${LICENSE}
 md5sum -c <<< "${TSDUCK_MD5} ${PKGNAME}-${PKGVER}.el9.x86_64.rpm" && \
 md5sum -c <<< "${PREREQ_MD5} install-prerequisites.sh" || exit 1
 
-if [ $? -eq 0 ]; then
-	echo "Downloaded files have successfully passed MD5 checksum test. Continuing."
-else
-	echo "Downloaded files have failed to pass MD5 checksum test. Exiting."
-	exit 1
-fi
-
+echo "Downloaded files have successfully passed MD5 checksum test. Continuing."
+ 
 # Prerequisites
 
 # Packages necessary for building tsduck
