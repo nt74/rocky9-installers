@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Author: Nikos Toutountzoglou, nikos.toutountzoglou@svt.se
 # Script: install-dektec-dkms.sh
 # Description: Install dektec Linux DKMS for Dektec device drivers
-# Revision: 1.0
+# Revision: 1.1
 
 # Check Linux distro
 if [ -f /etc/os-release ]; then
@@ -11,7 +11,7 @@ if [ -f /etc/os-release ]; then
 	OS=${ID}
 	VERS_ID=${VERSION_ID}
 	OS_ID="${VERS_ID:0:1}"
-elif type lsb_release &> /dev/null; then
+elif type lsb_release &>/dev/null; then
 	# linuxbase.org
 	OS=$(lsb_release -si | tr '[:upper:]' '[:lower:]')
 elif [ -f /etc/lsb-release ]; then
@@ -31,8 +31,8 @@ fi
 if [ $OS = "rocky" ] && [ $OS_ID = "9" ]; then
 	echo "Detected 'Rocky Linux 9'. Continuing."
 else
-    echo "Could not detect 'Rocky Linux 9'. Exiting."
-    exit 1
+	echo "Could not detect 'Rocky Linux 9'. Exiting."
+	exit 1
 fi
 
 # Variables
@@ -40,18 +40,17 @@ WORKDIR="$HOME/src/release/dektec"
 
 # Dektec DKMS RPM package
 PKGNAME="dektec-dkms"
-PKGVER="2024.04.0"
-DEKTEC_DKMS_VER="https://github.com/tsduck/${PKGNAME}/releases/download/v${PKGVER}/${PKGNAME}-${PKGVER}-0.el9.noarch.rpm"
-DEKTEC_DKMS_MD5="3c8466dd64808ddb53e30d77d4544e73"
+PKGVER="2024.06.0"
+DEKTEC_DKMS_VER="https://www.dektec.com/products/SDK/DTAPI/Downloads/LinuxSDK_v${PKGVER}.tar.gz"
+DEKTEC_DKMS_MD5="897aa00d43f1e42cbb778cfa5cc47262"
 
 # Prompt user with yes/no before continuing
-while true
-do
+while true; do
 	read -r -p "Install dektec Linux DKMS for Dektec device drivers? (y/n) " yesno
 	case "$yesno" in
-		n|N) exit 0;;
-		y|Y) break;;
-		*) echo "Please answer 'y/n'.";;
+	n | N) exit 0 ;;
+	y | Y) break ;;
+	*) echo "Please answer 'y/n'." ;;
 	esac
 done
 
@@ -60,10 +59,12 @@ mkdir -p ${WORKDIR}
 cd ${WORKDIR}
 # Dektec DKMS upstream source
 echo "Downloading 'dektec-dkms' from upstream source."
-curl -LO ${DEKTEC_DKMS_VER}
+if [ ! -f "LinuxSDK_v${PKGVER}.tar.gz" ]; then
+	curl -LO ${DEKTEC_DKMS_VER}
+fi
 
 # Checksum
-md5sum -c <<< "${DEKTEC_DKMS_MD5} ${PKGNAME}-${PKGVER}-0.el9.noarch.rpm" || exit 1
+md5sum -c <<<"${DEKTEC_DKMS_MD5} LinuxSDK_v${PKGVER}.tar.gz" || exit 1
 
 # Enable Extra Packages for Enterprise Linux 9
 echo "Enable EPEL, CRB and Development Tools."
@@ -74,10 +75,13 @@ sudo dnf groupinstall "Development Tools"
 # Update package repos cache
 sudo dnf makecache
 
-# Install decklink driver RPM package
-echo "Installing 'dektec-dkms' via RPM package."
+# Install dektec driver DKMS package
+echo "Installing 'dektec-dkms' via testing, building and installing DKMS package."
 sudo dnf install dkms kernel-headers-$(uname -r)
-sudo rpm -Uvh ${PKGNAME}-${PKGVER}-0.el9.noarch.rpm
+tar -xf LinuxSDK_v${PKGVER}.tar.gz
+cd LinuxSDK/Drivers/
+sudo ./Install
+sudo ./Install -t
 
 # Exit
 echo "All done. Downloaded sources are stored in folder '${WORKDIR}'."
