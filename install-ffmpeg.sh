@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Author: Nikos Toutountzoglou, nikos.toutountzoglou@svt.se
 # Script: install-ffmpeg.sh
 # Description: Install ffmpeg with Decklink, Intel QSV, NVIDIA GPU and AMF-AMD GPU support
-# Revision: 1.4
+# Revision: 1.5
 
 # Check Linux distro
 if [ -f /etc/os-release ]; then
@@ -11,7 +11,7 @@ if [ -f /etc/os-release ]; then
 	OS=${ID}
 	VERS_ID=${VERSION_ID}
 	OS_ID="${VERS_ID:0:1}"
-elif type lsb_release &> /dev/null; then
+elif type lsb_release &>/dev/null; then
 	# linuxbase.org
 	OS=$(lsb_release -si | tr '[:upper:]' '[:lower:]')
 elif [ -f /etc/lsb-release ]; then
@@ -31,8 +31,8 @@ fi
 if [ $OS = "rocky" ] && [ $OS_ID = "9" ]; then
 	echo "Detected 'Rocky Linux 9'. Continuing."
 else
-    echo "Could not detect 'Rocky Linux 9'. Exiting."
-    exit 1
+	echo "Could not detect 'Rocky Linux 9'. Exiting."
+	exit 1
 fi
 
 # Variables
@@ -53,13 +53,12 @@ BM_DRV_MD5="cd80deda73dcd2d421a653610c551805"
 BM_DRV_VER="14.0.1"
 
 # Prompt user with yes/no before continuing
-while true
-do
+while true; do
 	read -r -p "Install ffmpeg with Decklink, Intel QSV, NVIDIA GPU and AMF-AMD GPU support? (y/n) " yesno
 	case "$yesno" in
-		n|N) exit 0;;
-		y|Y) break;;
-		*) echo "Please answer 'y/n'.";;
+	n | N) exit 0 ;;
+	y | Y) break ;;
+	*) echo "Please answer 'y/n'." ;;
 	esac
 done
 
@@ -68,16 +67,25 @@ mkdir -p ${WORKDIR}
 cd ${WORKDIR}
 # FFmpeg upstream source
 echo "Downloading FFmpeg from upstream source."
-curl -o ${PKGNAME}-n${PKGVER}.tar.gz -LO ${FFMPEG_VER}
+if [ ! -f "${PKGNAME}-n${PKGVER}.tar.gz" ]; then
+	curl -o ${PKGNAME}-n${PKGVER}.tar.gz -LO ${FFMPEG_VER}
+fi
+
 # Decklink Drivers and SDK upstream source
 echo "Downloading Decklink Drivers v${BM_DRV_VER} and SDK v${BM_SDK_VER}."
-curl -o decklink_sdk.tar.gz -L ${BM_SDK}
-curl -o decklink.tar.gz -L ${BM_DRV}
+
+if [ ! -f "decklink_sdk.tar.gz" ]; then
+	curl -o decklink_sdk.tar.gz -L ${BM_SDK}
+fi
+
+if [ ! -f "decklink.tar.gz" ]; then
+	curl -o decklink.tar.gz -L ${BM_DRV}
+fi
 
 # Checksum
-md5sum -c <<< "${FFMPEG_MD5} ${PKGNAME}-n${PKGVER}.tar.gz" && \
-md5sum -c <<< "${BM_SDK_MD5} decklink_sdk.tar.gz" && \
-md5sum -c <<< "${BM_DRV_MD5} decklink.tar.gz" || exit 1
+md5sum -c <<<"${FFMPEG_MD5} ${PKGNAME}-n${PKGVER}.tar.gz" &&
+	md5sum -c <<<"${BM_SDK_MD5} decklink_sdk.tar.gz" &&
+	md5sum -c <<<"${BM_DRV_MD5} decklink.tar.gz" || exit 1
 
 echo "Downloaded files have successfully passed MD5 checksum test. Continuing."
 
@@ -116,7 +124,7 @@ echo "Installing prerequisite packages."
 sudo dnf install \
 	autoconf \
 	automake \
- 	AMF-devel \
+	AMF-devel \
 	cmake \
 	intel-gmmlib-devel \
 	intel-mediasdk-devel \
@@ -138,7 +146,7 @@ sudo dnf install \
 	ocl-icd-devel \
 	openssl-devel \
 	openjpeg2-devel \
- 	openh264-devel \
+	openh264-devel \
 	pkgconf-pkg-config \
 	perl-devel \
 	SDL2-devel \
@@ -227,13 +235,13 @@ export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:/usr/lib/pkgconfig:/usr/lib64/pkgconfig
 	--prefix='/usr' \
 	--disable-htmlpages \
 	--disable-debug \
- 	--enable-amf \
+	--enable-amf \
 	--enable-decklink \
 	--enable-gpl \
 	--enable-libdrm \
 	--enable-libopenjpeg \
 	--enable-libklvanc \
- 	--enable-libopenh264 \
+	--enable-libopenh264 \
 	--enable-libssh \
 	--enable-libsrt \
 	--enable-libvpl \
