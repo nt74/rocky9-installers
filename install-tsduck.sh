@@ -1,8 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Author: Nikos Toutountzoglou, nikos.toutountzoglou@svt.se
 # Script: install-tsduck.sh
 # Description: Install tsduck MPEG Transport Stream Toolkit
-# Revision: 1.0
+# Revision: 1.1
 
 # Check Linux distro
 if [ -f /etc/os-release ]; then
@@ -11,7 +11,7 @@ if [ -f /etc/os-release ]; then
 	OS=${ID}
 	VERS_ID=${VERSION_ID}
 	OS_ID="${VERS_ID:0:1}"
-elif type lsb_release &> /dev/null; then
+elif type lsb_release &>/dev/null; then
 	# linuxbase.org
 	OS=$(lsb_release -si | tr '[:upper:]' '[:lower:]')
 elif [ -f /etc/lsb-release ]; then
@@ -31,8 +31,8 @@ fi
 if [ $OS = "rocky" ] && [ $OS_ID = "9" ]; then
 	echo "Detected 'Rocky Linux 9'. Continuing."
 else
-    echo "Could not detect 'Rocky Linux 9'. Exiting."
-    exit 1
+	echo "Could not detect 'Rocky Linux 9'. Exiting."
+	exit 1
 fi
 
 # Variables
@@ -52,13 +52,12 @@ PREREQ_MD5="3314fa16a324d9cefcb9f26e9e775fdf"
 LICENSE="https://raw.githubusercontent.com/tsduck/tsduck/master/LICENSE.txt"
 
 # Prompt user with yes/no before continuing
-while true
-do
+while true; do
 	read -r -p "Install tsduck MPEG Transport Stream Toolkit? (y/n) " yesno
 	case "$yesno" in
-		n|N) exit 0;;
-		y|Y) break;;
-		*) echo "Please answer 'y/n'.";;
+	n | N) exit 0 ;;
+	y | Y) break ;;
+	*) echo "Please answer 'y/n'." ;;
 	esac
 done
 
@@ -67,19 +66,29 @@ mkdir -p ${WORKDIR}
 cd ${WORKDIR}
 # TSDuck upstream source
 echo "Downloading TSDuck from upstream source."
-curl -LO ${TSDUCK_VER}
+
+if [ ! -f "${PKGNAME}-${PKGVER}.el9.x86_64.rpm" ]; then
+	curl -LO ${TSDUCK_VER}
+fi
+
 # TSDuck prerequisites script
 echo "Downloading TSDuck prerequisites script."
-curl -LO ${PREREQ}
+
+if [ ! -f "install-prerequisites.sh" ]; then
+	curl -LO ${PREREQ}
+fi
+
 # TSDuck License
-curl -LO ${LICENSE}
+if [ ! -f "LICENSE.txt" ]; then
+	curl -LO ${LICENSE}
+fi
 
 # Checksum
-md5sum -c <<< "${TSDUCK_MD5} ${PKGNAME}-${PKGVER}.el9.x86_64.rpm" && \
-md5sum -c <<< "${PREREQ_MD5} install-prerequisites.sh" || exit 1
+md5sum -c <<<"${TSDUCK_MD5} ${PKGNAME}-${PKGVER}.el9.x86_64.rpm" &&
+	md5sum -c <<<"${PREREQ_MD5} install-prerequisites.sh" || exit 1
 
 echo "Downloaded files have successfully passed MD5 checksum test. Continuing."
- 
+
 # Prerequisites
 
 # Packages necessary for building tsduck
