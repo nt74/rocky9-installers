@@ -75,11 +75,11 @@ fi
 echo "Downloading Decklink Drivers v${BM_DRV_VER} and SDK v${BM_SDK_VER}."
 
 if [ ! -f "decklink_sdk.tar.gz" ]; then
-	curl -o decklink_sdk.tar.gz -L ${BM_SDK}
+	curl -o decklink_sdk.tar.gz -LO ${BM_SDK}
 fi
 
 if [ ! -f "decklink.tar.gz" ]; then
-	curl -o decklink.tar.gz -L ${BM_DRV}
+	curl -o decklink.tar.gz -LO ${BM_DRV}
 fi
 
 # Checksum
