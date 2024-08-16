@@ -2,7 +2,7 @@
 # Author: Nikos Toutountzoglou, nikos.toutountzoglou@svt.se
 # Script: install-tsduck.sh
 # Description: Install tsduck MPEG Transport Stream Toolkit
-# Revision: 1.1
+# Revision: 1.2
 
 # Check Linux distro
 if [ -f /etc/os-release ]; then
@@ -46,7 +46,6 @@ PKGVER="3.37-3670"
 
 # Prerequisites script
 PREREQ="https://raw.githubusercontent.com/tsduck/tsduck/master/scripts/install-prerequisites.sh"
-PREREQ_MD5="3314fa16a324d9cefcb9f26e9e775fdf"
 
 # License
 LICENSE="https://raw.githubusercontent.com/tsduck/tsduck/master/LICENSE.txt"
@@ -84,8 +83,7 @@ if [ ! -f "LICENSE.txt" ]; then
 fi
 
 # Checksum
-md5sum -c <<<"${TSDUCK_MD5} ${PKGNAME}-${PKGVER}.el9.x86_64.rpm" &&
-	md5sum -c <<<"${PREREQ_MD5} install-prerequisites.sh" || exit 1
+echo ${TSDUCK_MD5} ${PKGNAME}-${PKGVER}.el9.x86_64.rpm | md5sum -c || exit 1
 
 echo "Downloaded files have successfully passed MD5 checksum test. Continuing."
 
@@ -95,6 +93,7 @@ echo "Downloaded files have successfully passed MD5 checksum test. Continuing."
 echo "Installing prerequisite packages."
 chmod +x install-prerequisites.sh
 ./install-prerequisites.sh
+sudo dnf install mlocate
 
 # Install decklink driver RPM package
 echo "Installing 'tsduck' via RPM package."

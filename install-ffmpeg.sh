@@ -2,7 +2,7 @@
 # Author: Nikos Toutountzoglou, nikos.toutountzoglou@svt.se
 # Script: install-ffmpeg.sh
 # Description: Install ffmpeg with Decklink, Intel QSV, NVIDIA GPU and AMF-AMD GPU support
-# Revision: 1.5
+# Revision: 1.6
 
 # Check Linux distro
 if [ -f /etc/os-release ]; then
@@ -83,9 +83,9 @@ if [ ! -f "decklink.tar.gz" ]; then
 fi
 
 # Checksum
-md5sum -c <<<"${FFMPEG_MD5} ${PKGNAME}-n${PKGVER}.tar.gz" &&
-	md5sum -c <<<"${BM_SDK_MD5} decklink_sdk.tar.gz" &&
-	md5sum -c <<<"${BM_DRV_MD5} decklink.tar.gz" || exit 1
+echo ${FFMPEG_MD5} ${PKGNAME}-n${PKGVER}.tar.gz | md5sum -c &&
+	echo ${BM_SDK_MD5} decklink_sdk.tar.gz | md5sum -c &&
+	echo ${BM_DRV_MD5} decklink.tar.gz | md5sum -c || exit 1
 
 echo "Downloaded files have successfully passed MD5 checksum test. Continuing."
 
@@ -141,6 +141,7 @@ sudo dnf install \
 	libvpl-devel \
 	libpciaccess-devel \
 	mercurial \
+	mlocate \
 	nasm \
 	opencl-headers \
 	ocl-icd-devel \
@@ -166,7 +167,6 @@ echo "Enable NVIDIA CUDA Toolkit repo."
 sudo dnf config-manager \
 	--add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel9/x86_64/cuda-rhel9.repo
 sudo dnf clean all
-sudo dnf remove cuda-toolkit-12-4
 sudo dnf install cuda-toolkit-12-5
 sudo ldconfig
 
