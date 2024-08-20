@@ -67,14 +67,14 @@ cd ${WORKDIR}
 echo "Downloading TSDuck from upstream source."
 
 if [ ! -f "${PKGNAME}-${PKGVER}.el9.x86_64.rpm" ]; then
-	curl -LO ${TSDUCK_VER}
+	curl -# -LO ${TSDUCK_VER}
 fi
 
 # TSDuck prerequisites script
 echo "Downloading TSDuck prerequisites script."
 
 if [ ! -f "install-prerequisites.sh" ]; then
-	curl -LO ${PREREQ}
+	curl -# -LO ${PREREQ}
 fi
 
 # TSDuck License
@@ -93,7 +93,7 @@ echo "Downloaded files have successfully passed MD5 checksum test. Continuing."
 echo "Installing prerequisite packages."
 chmod +x install-prerequisites.sh
 ./install-prerequisites.sh
-sudo dnf install mlocate
+sudo dnf install -y glibc mlocate
 
 # Install decklink driver RPM package
 echo "Installing 'tsduck' via RPM package."
