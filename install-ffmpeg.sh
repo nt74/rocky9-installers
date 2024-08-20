@@ -68,18 +68,18 @@ cd ${WORKDIR}
 # FFmpeg upstream source
 echo "Downloading FFmpeg from upstream source."
 if [ ! -f "${PKGNAME}-n${PKGVER}.tar.gz" ]; then
-	curl -o ${PKGNAME}-n${PKGVER}.tar.gz -LO ${FFMPEG_VER}
+	curl -# -o ${PKGNAME}-n${PKGVER}.tar.gz -LO ${FFMPEG_VER}
 fi
 
 # Decklink Drivers and SDK upstream source
 echo "Downloading Decklink Drivers v${BM_DRV_VER} and SDK v${BM_SDK_VER}."
 
 if [ ! -f "decklink_sdk.tar.gz" ]; then
-	curl -o decklink_sdk.tar.gz -LO ${BM_SDK}
+	curl -# -o decklink_sdk.tar.gz -LO ${BM_SDK}
 fi
 
 if [ ! -f "decklink.tar.gz" ]; then
-	curl -o decklink.tar.gz -LO ${BM_DRV}
+	curl -# -o decklink.tar.gz -LO ${BM_DRV}
 fi
 
 # Checksum
@@ -98,10 +98,10 @@ tar -xf decklink.tar.gz
 
 # Enable Extra Packages for Enterprise Linux 9
 echo "Enable EPEL, CRB and Development Tools."
-sudo dnf install epel-release
+sudo dnf install -y epel-release
 sudo /usr/bin/crb enable
 # Enable Development Tools
-sudo dnf groupinstall "Development Tools"
+sudo dnf groupinstall -y "Development Tools"
 # Update package repos cache
 sudo dnf makecache
 
@@ -126,6 +126,7 @@ sudo dnf install \
 	automake \
 	AMF-devel \
 	cmake \
+ 	glibc \
 	intel-gmmlib-devel \
 	intel-mediasdk-devel \
 	libass-devel \
@@ -167,7 +168,7 @@ echo "Enable NVIDIA CUDA Toolkit repo."
 sudo dnf config-manager \
 	--add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel9/x86_64/cuda-rhel9.repo
 sudo dnf clean all
-sudo dnf install cuda-toolkit-12-5
+sudo dnf install -y cuda-toolkit-12-5
 sudo ldconfig
 
 # Install ffnvcodec-headers
