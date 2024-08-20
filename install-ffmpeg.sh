@@ -205,7 +205,7 @@ cd ${WORKDIR}
 
 # Install zvbi (Teletext)
 echo "Installing 'libzvbi' (Teletext)."
-curl -LO https://sourceforge.net/projects/zapping/files/zvbi/0.2.35/zvbi-0.2.35.tar.bz2
+curl -# -LO https://sourceforge.net/projects/zapping/files/zvbi/0.2.35/zvbi-0.2.35.tar.bz2
 tar -xf zvbi-0.2.35.tar.bz2
 cd zvbi-0.2.35
 ./configure --prefix='/usr' --sbindir='/usr/bin'
