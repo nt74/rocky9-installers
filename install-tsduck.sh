@@ -79,7 +79,7 @@ fi
 
 # TSDuck License
 if [ ! -f "LICENSE.txt" ]; then
-	curl -LO ${LICENSE}
+	curl -# -LO ${LICENSE}
 fi
 
 # Checksum
