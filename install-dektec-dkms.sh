@@ -60,7 +60,7 @@ cd ${WORKDIR}
 # Dektec DKMS upstream source
 echo "Downloading 'dektec-dkms' from upstream source."
 if [ ! -f "LinuxSDK_v${PKGVER}.tar.gz" ]; then
-	curl -LO ${DEKTEC_DKMS_VER}
+	curl -# -LO ${DEKTEC_DKMS_VER}
 fi
 
 # Checksum
@@ -68,10 +68,10 @@ echo ${DEKTEC_DKMS_MD5} LinuxSDK_v${PKGVER}.tar.gz | md5sum -c || exit 1
 
 # Enable Extra Packages for Enterprise Linux 9
 echo "Enable EPEL, CRB and Development Tools."
-sudo dnf install epel-release
+sudo dnf install -y epel-release
 sudo /usr/bin/crb enable
 # Enable Development Tools
-sudo dnf groupinstall "Development Tools"
+sudo dnf groupinstall -y "Development Tools"
 # Update package repos cache
 sudo dnf makecache
 
