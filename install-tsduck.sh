@@ -39,10 +39,10 @@ fi
 WORKDIR="$HOME/src/release/tsduck"
 
 # TSDuck RPM package
-TSDUCK_VER="https://github.com/tsduck/tsduck/releases/download/v3.37-3670/tsduck-3.37-3670.el9.x86_64.rpm"
-TSDUCK_MD5="c540b2c5f3ef69fca6c50f666e22537b"
 PKGNAME="tsduck"
-PKGVER="3.37-3670"
+PKGVER="3.38-3822"
+TSDUCK_VER="https://github.com/tsduck/tsduck/releases/download/v${PKGVER}/${PKGNAME}-${PKGVER}.el9.x86_64.rpm"
+TSDUCK_MD5="566f1cee31cffc8277bba28bb8e59801"
 
 # Prerequisites script
 PREREQ="https://raw.githubusercontent.com/tsduck/tsduck/master/scripts/install-prerequisites.sh"
@@ -60,27 +60,33 @@ while true; do
 	esac
 done
 
-# Download
+# Create a working source dir
+if [ -d "${WORKDIR}" ]; then
+	while true; do
+		echo "Source directory '${WORKDIR}' already exists."
+		read -r -p "Delete it and reinstall? (y/n) " yesno
+		case "$yesno" in
+		n | N) exit 0 ;;
+		y | Y) break ;;
+		*) echo "Please answer 'y/n'." ;;
+		esac
+	done
+fi
+
+rm -f ${WORKDIR}
 mkdir -p ${WORKDIR}
 cd ${WORKDIR}
+
 # TSDuck upstream source
 echo "Downloading TSDuck from upstream source."
-
-if [ ! -f "${PKGNAME}-${PKGVER}.el9.x86_64.rpm" ]; then
-	curl -# -LO ${TSDUCK_VER}
-fi
+curl -# -LO ${TSDUCK_VER}
 
 # TSDuck prerequisites script
 echo "Downloading TSDuck prerequisites script."
-
-if [ ! -f "install-prerequisites.sh" ]; then
-	curl -# -LO ${PREREQ}
-fi
+curl -# -LO ${PREREQ}
 
 # TSDuck License
-if [ ! -f "LICENSE.txt" ]; then
-	curl -# -LO ${LICENSE}
-fi
+curl -# -LO ${LICENSE}
 
 # Checksum
 echo ${TSDUCK_MD5} ${PKGNAME}-${PKGVER}.el9.x86_64.rpm | md5sum -c || exit 1

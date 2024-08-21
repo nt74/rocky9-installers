@@ -54,14 +54,26 @@ while true; do
 	esac
 done
 
-# Download
+# Create a working source dir
+if [ -d "${WORKDIR}" ]; then
+	while true; do
+		echo "Source directory '${WORKDIR}' already exists."
+		read -r -p "Delete it and reinstall? (y/n) " yesno
+		case "$yesno" in
+		n | N) exit 0 ;;
+		y | Y) break ;;
+		*) echo "Please answer 'y/n'." ;;
+		esac
+	done
+fi
+
+rm -f ${WORKDIR}
 mkdir -p ${WORKDIR}
 cd ${WORKDIR}
+
 # Dektec DKMS upstream source
 echo "Downloading 'dektec-dkms' from upstream source."
-if [ ! -f "LinuxSDK_v${PKGVER}.tar.gz" ]; then
-	curl -# -LO ${DEKTEC_DKMS_VER}
-fi
+curl -# -LO ${DEKTEC_DKMS_VER}
 
 # Checksum
 echo ${DEKTEC_DKMS_MD5} LinuxSDK_v${PKGVER}.tar.gz | md5sum -c || exit 1
