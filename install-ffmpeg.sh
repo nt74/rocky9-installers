@@ -2,7 +2,7 @@
 # Author: Nikos Toutountzoglou, nikos.toutountzoglou@svt.se
 # Script: install-ffmpeg.sh
 # Description: Install ffmpeg with Decklink, Intel QSV, NVIDIA GPU and AMF-AMD GPU support
-# Revision: 1.6
+# Revision: 1.7
 
 # Check Linux distro
 if [ -f /etc/os-release ]; then
@@ -36,21 +36,21 @@ else
 fi
 
 # Variables
-WORKDIR="$HOME/src/release"
+WORKDIR="$HOME/src/release/rocky9-ffmpeg"
 
 # FFmpeg
-FFMPEG_VER="https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n7.0.1.tar.gz"
-FFMPEG_MD5="ad3a6a42520c4a9b42498dea28ec7f44"
 PKGNAME="FFmpeg"
-PKGVER="7.0.1"
+PKGVER="7.0.2"
+FFMPEG_VER="https://github.com/${PKGNAME}/${PKGNAME}/archive/refs/tags/n${PKGVER}.tar.gz"
+FFMPEG_MD5="ad90d32be58fbc1a52a09a1450bf761e"
 
 # Blackmagic Decklink Drivers and SDK
-BM_SDK="https://drive.usercontent.google.com/download?id=1cCm1kiBptMm6mR8-UlD1RKSPnZ3VCv5g&confirm=y"
-BM_SDK_MD5="84f50563cf4a7cb311fe73ea9ed10d27"
-BM_SDK_VER="14.0"
-BM_DRV="https://drive.usercontent.google.com/download?id=1UicO_CSX27sus0pmsFxhZ-nienH1Mosk&confirm=y"
-BM_DRV_MD5="cd80deda73dcd2d421a653610c551805"
-BM_DRV_VER="14.0.1"
+BM_SDK="https://drive.usercontent.google.com/download?id=11LUclY1tBLfkAGvu93PaxVpZEmyoKVTE&confirm=y"
+BM_SDK_MD5="8d6d32e917d1ea420ecbb2cb7e5fb68f"
+BM_SDK_VER="14.2"
+BM_DRV="https://drive.usercontent.google.com/download?id=1l-H996Tc6bT8IWe0V74VcHC2NFPwJQKG&confirm=y"
+BM_DRV_MD5="5132e25f441c6a3af9fbdc45d2fc4d75"
+BM_DRV_VER="14.2"
 
 # Prompt user with yes/no before continuing
 while true; do
@@ -62,25 +62,31 @@ while true; do
 	esac
 done
 
-# Download
+# Create a working source dir
+if [ -d "${WORKDIR}" ]; then
+	while true; do
+		echo "Source directory '${WORKDIR}' already exists."
+		read -r -p "Delete it and reinstall? (y/n) " yesno
+		case "$yesno" in
+		n | N) exit 0 ;;
+		y | Y) break ;;
+		*) echo "Please answer 'y/n'." ;;
+		esac
+	done
+fi
+
+rm -f ${WORKDIR}
 mkdir -p ${WORKDIR}
 cd ${WORKDIR}
+
 # FFmpeg upstream source
 echo "Downloading FFmpeg from upstream source."
-if [ ! -f "${PKGNAME}-n${PKGVER}.tar.gz" ]; then
-	curl -# -o ${PKGNAME}-n${PKGVER}.tar.gz -LO ${FFMPEG_VER}
-fi
+curl -# -o ${PKGNAME}-n${PKGVER}.tar.gz -LO ${FFMPEG_VER}
 
 # Decklink Drivers and SDK upstream source
 echo "Downloading Decklink Drivers v${BM_DRV_VER} and SDK v${BM_SDK_VER}."
-
-if [ ! -f "decklink_sdk.tar.gz" ]; then
-	curl -# -o decklink_sdk.tar.gz -LO ${BM_SDK}
-fi
-
-if [ ! -f "decklink.tar.gz" ]; then
-	curl -# -o decklink.tar.gz -LO ${BM_DRV}
-fi
+curl -# -o decklink_sdk.tar.gz -LO ${BM_SDK}
+curl -# -o decklink.tar.gz -LO ${BM_DRV}
 
 # Checksum
 echo ${FFMPEG_MD5} ${PKGNAME}-n${PKGVER}.tar.gz | md5sum -c &&
@@ -114,7 +120,7 @@ sudo cp -v --no-preserve='ownership' "Blackmagic_DeckLink_SDK_${BM_SDK_VER}/Linu
 # Install decklink driver RPM package
 echo "Installing Decklink drivers via RPM package."
 sudo dnf install dkms kernel-headers-$(uname -r)
-sudo rpm -Uvh "Blackmagic_Desktop_Video_Linux_${BM_DRV_VER}/rpm/x86_64/desktopvideo-${BM_DRV_VER}a2.x86_64.rpm"
+sudo rpm -Uvh "Blackmagic_Desktop_Video_Linux_${BM_DRV_VER}/rpm/x86_64/desktopvideo-${BM_DRV_VER}*.rpm"
 echo "Make sure to import 'mokutil key' in UEFI systems with Secure Boot enabled."
 
 # Prerequisites
@@ -122,41 +128,40 @@ echo "Make sure to import 'mokutil key' in UEFI systems with Secure Boot enabled
 # Packages necessary for building ffmpeg
 echo "Installing prerequisite packages."
 sudo dnf install \
+	AMF-devel \
 	autoconf \
 	automake \
-	AMF-devel \
 	cmake \
- 	glibc \
+	glibc \
 	intel-gmmlib-devel \
 	intel-mediasdk-devel \
 	libass-devel \
 	libdrm-devel \
+	libogg-devel \
+	libpciaccess-devel \
+	libssh-devel \
 	libtool \
 	libva-devel \
-	libvorbis-devel \
-	libogg-devel \
-	libX11-devel \
-	libva-devel \
 	libva-utils \
-	libssh-devel \
+	libvorbis-devel \
 	libvpl-devel \
-	libpciaccess-devel \
+	libX11-devel \
 	mercurial \
 	mlocate \
 	nasm \
-	opencl-headers \
 	ocl-icd-devel \
-	openssl-devel \
-	openjpeg2-devel \
+	opencl-headers \
 	openh264-devel \
-	pkgconf-pkg-config \
+	openjpeg2-devel \
+	openssl-devel \
 	perl-devel \
+	pkgconf-pkg-config \
 	SDL2-devel \
-	srt-devel \
 	srt \
+	srt-devel \
 	texinfo \
-	xwayland-devel \
 	xorg-x11-server-devel \
+	xwayland-devel \
 	yasm \
 	zlib-devel
 
@@ -165,11 +170,18 @@ sudo dnf install \
 # Install nvidia-cuda-toolkit
 # https://developer.nvidia.com/cuda-downloads?target_os=Linux&target_arch=x86_64&Distribution=Rocky&target_version=9
 echo "Enable NVIDIA CUDA Toolkit repo."
-sudo dnf config-manager \
-	--add-repo https://developer.download.nvidia.com/compute/cuda/repos/rhel9/x86_64/cuda-rhel9.repo
-sudo dnf clean all
-sudo dnf install -y cuda-toolkit-12-5
-sudo ldconfig
+CUDA_RPM="cuda-repo-rhel9-12-6-local-12.6.0_560.28.03-1.x86_64.rpm"
+CUDA_RPM_URL="https://developer.download.nvidia.com/compute/cuda/12.6.0/local_installers/${CUDA_RPM}"
+
+if [ $(dnf list installed cuda-toolkit-12-* &>/dev/null && echo $? || echo $?) -eq 1 ]; then
+	curl -# -o ${CUDA_RPM} -LO ${CUDA_RPM_URL}
+	sudo rpm -i ${CUDA_RPM}
+	sudo dnf clean all
+	sudo dnf -y install cuda-toolkit-12-6
+	sudo ldconfig
+else
+	echo "Already enabled, skipping."
+fi
 
 # Install ffnvcodec-headers
 echo "Installing 'ffnvcodec-headers'."
@@ -185,10 +197,10 @@ git clone https://code.videolan.org/videolan/x264.git
 cd x264
 ./configure \
 	--prefix='/usr' \
-	--enable-shared \
-	--enable-pic \
+	--disable-avs \
 	--enable-lto \
-	--disable-avs
+	--enable-pic \
+	--enable-shared
 make
 sudo make install
 cd ${WORKDIR}
@@ -234,29 +246,30 @@ cd ${PKGNAME}-n${PKGVER}
 export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:/usr/lib/pkgconfig:/usr/lib64/pkgconfig"
 ./configure \
 	--prefix='/usr' \
-	--disable-htmlpages \
 	--disable-debug \
+	--disable-htmlpages \
 	--enable-amf \
 	--enable-decklink \
 	--enable-gpl \
 	--enable-libdrm \
-	--enable-libopenjpeg \
 	--enable-libklvanc \
 	--enable-libopenh264 \
-	--enable-libssh \
+	--enable-libopenjpeg \
 	--enable-libsrt \
+	--enable-libssh \
 	--enable-libvpl \
-	--enable-libzvbi \
 	--enable-libx264 \
 	--enable-libx265 \
+	--enable-libzvbi \
+	--enable-nonfree \
 	--enable-nvdec \
 	--enable-nvenc \
-	--enable-nonfree \
-	--enable-openssl \
 	--enable-opencl \
+	--enable-openssl \
 	--enable-pic \
 	--enable-runtime-cpudetect \
 	--enable-vaapi
+
 make
 sudo make install
 
