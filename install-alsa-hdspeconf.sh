@@ -3,7 +3,7 @@
 # Author: nikos.toutountzoglou@svt.se
 # Upstream link: https://github.com/PhilippeBekaert/hdspeconf
 # Video: https://youtu.be/jK8XmVoK9WM?si=9iN15IBqC99z18cz
-# Description: RME HDSPe MADI/AES/RayDAT/AIO/AIO-Pro DKMS driver installation script for Rocky Linux 9
+# Description: RME HDSPe MADI/AES/RayDAT/AIO/AIO-Pro sound cards user space configuration tool installation script for Rocky Linux 9
 # Revision: 1.0
 
 # Stop script on NZEC
