@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Script: install-alsa-hdspeconf.sh
+# Script: install-alsa-tools.sh
 # Author: nikos.toutountzoglou@svt.se
-# Upstream link: https://github.com/PhilippeBekaert/hdspeconf
-# Video: https://youtu.be/jK8XmVoK9WM?si=9iN15IBqC99z18cz
-# Description: RME HDSPe MADI/AES/RayDAT/AIO/AIO-Pro sound cards user space configuration tool installation script for Rocky Linux 9
+# Upstream link: https://www.alsa-project.org
+# Description: Alsa tools for Rocky Linux 9
 # Revision: 1.0
 
 # Stop script on NZEC
@@ -15,12 +14,11 @@ set -u
 set -o pipefail
 
 # Variables
-PKGDIR="$HOME/src/hdspeconf"
-PKGNAME="alsa-hdspeconf"
-PKGVER="0.0"
-HDSPECONF_PKG="https://github.com/PhilippeBekaert/hdspeconf.git"
-HDSPECONF_VER="0.0"
-HDSPECONF_MD5=
+PKGDIR="$HOME/src/alsa-tools"
+PKGNAME="alsa-tools"
+PKGVER="1.2.11"
+ATOOLS_PKG="http://www.alsa-project.org/files/pub/tools/${PKGNAME}-${PKGVER}.tar.bz2"
+ATOOLS_MD5="bc5f5e5689f46a9d4a0b85dc6661732c"
 
 # Check Linux distro
 if [ -f /etc/os-release ]; then
@@ -54,7 +52,7 @@ else
 fi
 
 # Prompt user with yes/no before proceeding
-printf "Welcome to RME HDSPe sound cards user space configuration tool installation script.\n"
+printf "Welcome to alsa-tools installation script.\n"
 while true; do
 	read -r -p "Proceed with installation? (y/n) " yesno
 	case "$yesno" in
@@ -95,38 +93,79 @@ sudo dnf makecache
 # Prerequisites
 
 # Packages necessary for building hdspeconf
-sudo dnf install -y alsa-lib-devel wxGTK3-devel
+sudo dnf install -y alsa-lib-devel hicolor-icon-theme fltk-devel gtk2-devel gtk3-devel
 
 # Download latest driver from upstream source
 printf "Downloading latest upstream source.\n"
-git clone ${HDSPECONF_PKG}
+curl -# -LO ${ATOOLS_PKG}
 
-# Patches and fixes
-cd hdspeconf
-# insert patches here...
+# Checksum
+echo ${ATOOLS_MD5} ${PKGNAME}-${PKGVER}.tar.bz2 | md5sum -c || exit 1
 
-# Build binary
+printf "Downloaded files have successfully passed MD5 checksum test. Continuing.\n"
+tar -xf ${PKGNAME}-${PKGVER}.tar.bz2
+
+# Prepare and build
+cd ${PKGNAME}-${PKGVER}
+
+# Uncomment to install more tools
+TOOLS=(
+	#as10k1
+	#echomixer
+	#envy24control
+	#hda-verb
+	# hdajackretask  # fails to build
+	#hdajacksensetest
+	#hdspconf
+	#hdsploader
+	hdspmixer
+	#hwmixvolume
+	#ld10k1
+	#mixartloader
+	#pcxhrloader
+	# qlo10k1  # disabled, because build is broken
+	rmedigicontrol
+	#sb16_csp
+	#seq/sbiload
+	#sscape_ctl
+	#vxloader
+	#us428control
+	#usx2yloader
+)
+
+# Prepare
+printf "Preparing package.\n\n"
+sleep 3
+
+for tool in "${TOOLS[@]}"; do
+	(
+		cd ${PKGDIR}/${PKGNAME}-${PKGVER}/$tool
+		autoreconf -vfi
+	)
+done
+
+# Build
 printf "Building package.\n\n"
 sleep 3
 
-make depend
-make
+for tool in "${TOOLS[@]}"; do
+	(
+		cd ${PKGDIR}/${PKGNAME}-${PKGVER}/$tool
+		./configure --prefix=/usr --sbindir=/usr/bin
+		make
+	)
+done
 
-# Install binary
+# Install
 printf "Installing package.\n\n"
 sleep 3
 
-sudo install -vDm755 hdspeconf -t /usr/share/${PKGNAME}
-sudo install -vDm644 dialog-warning.png -t /usr/share/${PKGNAME}
-
-# Create symlink in /usr/bin
-printf "Creating symlink in '/usr/bin'.\n\n"
-sleep 3
-
-sudo ln -v -s /usr/share/${PKGNAME}/hdspeconf /usr/bin/hdspeconf
+for tool in "${TOOLS[@]}"; do
+	sudo make install -C ${PKGDIR}/${PKGNAME}-${PKGVER}/$tool
+done
 
 # Prompt about final steps
-printf "\nSuccessfully installed hdspeconf user space configuration tool for RME HDSPe MADI/AES/RayDAT/AIO/AIO-Pro cards\nTo open the configuration window open a terminal window and type 'hdspeconf'.\n"
-printf "\nFor more information please check: https://github.com/PhilippeBekaert/hdspeconf\n"
+echo "Successfully installed alsa tools: "${TOOLS[@]}""
+printf "\nFor more information please check: https://www.alsa-project.org\n"
 
 exit 0
