@@ -108,7 +108,7 @@ mkdir -p build/usr/src/${PKGNAME}-${RME_DKMS_VER}
 
 # Create a custom dkms.conf file and set correct version
 # DEST_MODULE_LOCATION is ignored on RHEL. Instead, the proper distribution-specific directory is used.
-printf 'PACKAGE_NAME=\"alsa-hdspe\"\nPACKAGE_VERSION=\"0.0\"\n\n\"AUTOINSTALL=\"yes\"\n\nBUILT_MODULE_NAME[0]=\"snd-hdspe\"\nBUILT_MODULE_LOCATION[0]=\"sound/pci/hdsp/hdspe\"\nDEST_MODULE_LOCATION[0]=\"/kernel/sound/pci/\"\n' >dkms-custom.conf
+printf 'PACKAGE_NAME=\"alsa-hdspe\"\nPACKAGE_VERSION=\"0.0\"\nAUTOINSTALL=\"yes\"\n\nBUILT_MODULE_NAME[0]=\"snd-hdspe\"\nBUILT_MODULE_LOCATION[0]=\"sound/pci/hdsp/hdspe\"\nDEST_MODULE_LOCATION[0]=\"/kernel/sound/pci/\"\n' >dkms-custom.conf
 
 # Copy DKMS driver to correct build dirs
 install -Dm644 dkms-custom.conf build/usr/src/${PKGNAME}-${RME_DKMS_VER}/dkms.conf
