@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Script: install-alsa-hdspe-dkms.sh
+# Script: install-alsa-hdspeconf.sh
 # Author: nikos.toutountzoglou@svt.se
-# Upstream link: https://github.com/PhilippeBekaert/snd-hdspe
+# Upstream link: https://github.com/PhilippeBekaert/hdspeconf
 # Video: https://youtu.be/jK8XmVoK9WM?si=9iN15IBqC99z18cz
 # Description: RME HDSPe MADI/AES/RayDAT/AIO/AIO-Pro DKMS driver installation script for Rocky Linux 9
 # Revision: 1.0
@@ -15,12 +15,12 @@ set -u
 set -o pipefail
 
 # Variables
-PKGDIR="$HOME/src/alsa-hdspe-dkms"
-PKGNAME="alsa-hdspe"
+PKGDIR="$HOME/src/hdspeconf"
+PKGNAME="alsa-hdspeconf"
 PKGVER="0.0"
-RME_DKMS_PKG="https://github.com/PhilippeBekaert/snd-hdspe.git"
-RME_DKMS_VER="0.0"
-RME_DKMS_MD5=
+HDSPECONF_PKG="https://github.com/PhilippeBekaert/hdspeconf.git"
+HDSPECONF_VER="0.0"
+HDSPECONF_MD5=
 
 # Check Linux distro
 if [ -f /etc/os-release ]; then
@@ -54,7 +54,7 @@ else
 fi
 
 # Prompt user with yes/no before proceeding
-printf "Welcome to RME HDSPe sound cards DKMS driver installation script.\n"
+printf "Welcome to RME HDSPe sound cards user space configuration tool installation script.\n"
 while true; do
 	read -r -p "Proceed with installation? (y/n) " yesno
 	case "$yesno" in
@@ -92,43 +92,32 @@ sudo dnf groupinstall -y "Development Tools"
 # Update package repos cache
 sudo dnf makecache
 
-# Install Rocky Linux 9 dkms package
-sudo dnf install -y dkms kernel-headers-$(uname -r)
+# Prerequisites
+
+# Packages necessary for building hdspeconf
+sudo dnf install -y alsa-lib-devel wxGTK3-devel
 
 # Download latest driver from upstream source
-printf "Downloading latest driver from upstream source.\n"
-git clone ${RME_DKMS_PKG}
+printf "Downloading latest upstream source.\n"
+git clone ${HDSPECONF_PKG}
 
 # Patches and fixes
-cd snd-hdspe
+cd hdspeconf
 # insert patches here...
 
-# Create DKMS driver build dir
-mkdir -p build/usr/src/${PKGNAME}-${RME_DKMS_VER}
+# Build binary
+make depend
+make
 
-# Create a custom dkms.conf file and set correct version
-printf 'PACKAGE_NAME=alsa-hdspe\nPACKAGE_VERSION=0.0\n\nMAKE=\"\u0027make\u0027 KERNELDIR=/lib/modules/${kernelver}/build\"\nCLEAN=\"make clean\"\nAUTOINSTALL=yes\n\nBUILT_MODULE_NAME[0]=snd-hdspe\nBUILT_MODULE_LOCATION[0]=sound/pci/hdsp/hdspe\nDEST_MODULE_LOCATION[0]=/kernel/sound/pci/\n' >dkms-custom.conf
+# Install binary
+sudo install -vDm755 hdspeconf -t /usr/share/${PKGNAME}
+sudo install -vDm644 dialog-warning.png -t /usr/share/${PKGNAME}
 
-# Copy DKMS driver to correct build dirs
-install -Dm644 dkms-custom.conf build/usr/src/${PKGNAME}-${RME_DKMS_VER}/dkms.conf
-install -Dm644 Makefile build/usr/src/${PKGNAME}-${RME_DKMS_VER}/Makefile
-cp -a --no-preserve='mode,ownership' sound build/usr/src/${PKGNAME}-${RME_DKMS_VER}
-
-# Copy final DKMS driver to kernel source dir
-cd build/usr/src
-sudo cp -R ${PKGNAME}-${RME_DKMS_VER} /usr/src
-
-# Install DKMS driver
-printf "Installing DKMS driver.\n"
-sudo dkms install -m ${PKGNAME} -v ${RME_DKMS_VER}
-
-# Blacklist conflicting rme9652 driver
-if [ ! -f /usr/lib/modprobe.d/hdspe.conf ]; then
-	printf "blacklist snd-hdspm" | sudo tee -a /usr/lib/modprobe.d/hdspe.conf
-fi
+# Create symlink in /usr/bin
+sudo ln -s /usr/share/${PKGNAME}/hdspeconf /usr/bin/${PKGNAME}
 
 # Prompt about final steps
-printf "\nSuccessfully installed DKMS drivers, now reboot and check\nif the module is loaded by typing 'lsmod | grep snd-hdspe'.\n"
-printf "\nFor more information please check: https://github.com/PhilippeBekaert/snd-hdspe\n"
+printf "\nSuccessfully installed hdspeconf user space configuration tool for RME HDSPe MADI/AES/RayDAT/AIO/AIO-Pro cards\nTo open the configuration window open a terminal window and type 'hdspeconf'.\n"
+printf "\nFor more information please check: https://github.com/PhilippeBekaert/hdspeconf\n"
 
 exit 0
