@@ -139,7 +139,7 @@ printf "\nIf SecureBoot is enabled, you will need the following steps:
 6. And confirm with 'Yes' when prompted
 7. After this, enter the password you set up with 'mokutil --import' in the previous step
 8. At this point you are done, select 'OK' and the computer will reboot trusting the key for your modules
-9. After reboot, you can inspect the MOK certificates with the following command 'mokutil --list-enrolled | grep DKMS'\n\n"
+9. After reboot, you can inspect the MOK certificates with the following command 'mokutil --list-enrolled | grep DKMS'\n"
 printf "\nFor more information please check: https://github.com/PhilippeBekaert/snd-hdspe\n"
 
 exit 0
