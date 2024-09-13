@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Author: Nikos Toutountzoglou, nikos.toutountzoglou@svt.se
+# Upstream link: https://www.dektec.com/downloads/SDK/#linux
 # Script: install-dektec-dkms.sh
 # Description: Install dektec Linux DKMS for Dektec device drivers
 # Revision: 1.2
@@ -97,14 +98,14 @@ sudo ./Install -t
 
 # Exit
 echo "All done. Downloaded sources are stored in folder '${WORKDIR}'."
-echo "If SecureBoot is enabled, you will need the following steps:"
-echo "1. Type 'mokutil --import /var/lib/dkms/mok.pub'"
-echo "2. You'll be prompted to create a password. Enter it twice."
-echo "3. Reboot the computer. At boot you'll see the MOK Manager EFI interface"
-echo "4. Press any key to enter it, then select 'Enroll MOK'"
-echo "5. Then select 'Continue'"
-echo "6. And confirm with 'Yes' when prompted"
-echo "7. After this, enter the password you set up with 'mokutil --import' in the previous step"
-echo "8. At this point you are done, select 'OK' and the computer will reboot trusting the key for your modules"
-echo "9. After reboot, you can inspect the MOK certificates with the following command 'mokutil --list-enrolled | grep DKMS'"
+printf "\nIf SecureBoot is enabled, you will need the following steps:
+1. Type 'mokutil --import /var/lib/dkms/mok.pub'
+2. You'll be prompted to create a password. Enter it twice.
+3. Reboot the computer. At boot you'll see the MOK Manager EFI interface
+4. Press any key to enter it, then select 'Enroll MOK'
+5. Then select 'Continue'
+6. And confirm with 'Yes' when prompted
+7. After this, enter the password you set up with 'mokutil --import' in the previous step
+8. At this point you are done, select 'OK' and the computer will reboot trusting the key for your modules
+9. After reboot, you can inspect the MOK certificates with the following command 'mokutil --list-enrolled | grep DKMS'\n"
 exit 0
