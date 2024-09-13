@@ -92,7 +92,7 @@ sudo dnf makecache
 
 # Prerequisites
 
-# Packages necessary for building hdspeconf
+# Packages necessary for building alsa-tools
 sudo dnf install -y alsa-lib-devel hicolor-icon-theme fltk-devel gtk2-devel gtk3-devel
 
 # Download latest driver from upstream source
