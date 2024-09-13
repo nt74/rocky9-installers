@@ -130,6 +130,16 @@ fi
 
 # Prompt about final steps
 printf "\nSuccessfully installed DKMS drivers, now reboot and check\nif the module is loaded by typing 'lsmod | grep snd-hdspe'.\n"
+printf "\nIf SecureBoot is enabled, you will need the following steps:
+1. Type 'mokutil --import /var/lib/dkms/mok.pub'
+2. You'll be prompted to create a password. Enter it twice.
+3. Reboot the computer. At boot you'll see the MOK Manager EFI interface
+4. Press any key to enter it, then select 'Enroll MOK'
+5. Then select 'Continue'
+6. And confirm with 'Yes' when prompted
+7. After this, enter the password you set up with 'mokutil --import' in the previous step
+8. At this point you are done, select 'OK' and the computer will reboot trusting the key for your modules
+9. After reboot, you can inspect the MOK certificates with the following command 'mokutil --list-enrolled | grep DKMS'\n\n"
 printf "\nFor more information please check: https://github.com/PhilippeBekaert/snd-hdspe\n"
 
 exit 0
