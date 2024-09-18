@@ -4,7 +4,7 @@
 # Upstream link: https://github.com/PhilippeBekaert/hdspeconf
 # Video: https://youtu.be/jK8XmVoK9WM?si=9iN15IBqC99z18cz
 # Description: RME HDSPe MADI/AES/RayDAT/AIO/AIO-Pro sound cards user space configuration tool installation script for Rocky Linux 9
-# Revision: 1.0
+# Revision: 1.1
 
 # Stop script on NZEC
 set -e
@@ -123,7 +123,8 @@ sudo install -vDm644 dialog-warning.png -t /usr/share/${PKGNAME}
 printf "Creating symlink in '/usr/bin'.\n\n"
 sleep 3
 
-sudo ln -v -s /usr/share/${PKGNAME}/hdspeconf /usr/bin/hdspeconf
+printf '#!/usr/bin/env bash\ncd /usr/share/alsa-hdspeconf/hdspeconf\n./hdspeconf' | sudo tee -a /usr/bin/hdspeconf
+sudo chmod +x /usr/bin/hdspeconf
 
 # Prompt about final steps
 printf "\nSuccessfully installed hdspeconf user space configuration tool for RME HDSPe MADI/AES/RayDAT/AIO/AIO-Pro cards\nTo open the configuration window open a terminal window and type 'hdspeconf'.\n"
