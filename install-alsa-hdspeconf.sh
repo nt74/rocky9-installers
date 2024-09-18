@@ -123,7 +123,7 @@ sudo install -vDm644 dialog-warning.png -t /usr/share/${PKGNAME}
 printf "Creating symlink in '/usr/bin'.\n\n"
 sleep 3
 
-printf '#!/usr/bin/env bash\ncd /usr/share/alsa-hdspeconf/hdspeconf\n./hdspeconf' | sudo tee -a /usr/bin/hdspeconf
+printf '#!/usr/bin/env bash\ncd /usr/share/alsa-hdspeconf\n./hdspeconf' | sudo tee -a /usr/bin/hdspeconf
 sudo chmod +x /usr/bin/hdspeconf
 
 # Prompt about final steps
