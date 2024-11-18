@@ -2,7 +2,7 @@
 # Author: Nikos Toutountzoglou, nikos.toutountzoglou@svt.se
 # Script: install-tsduck.sh
 # Description: Install tsduck MPEG Transport Stream Toolkit
-# Revision: 1.3
+# Revision: 1.4
 
 # Check Linux distro
 if [ -f /etc/os-release ]; then
@@ -40,9 +40,9 @@ WORKDIR="$HOME/src/release/tsduck"
 
 # TSDuck RPM package
 PKGNAME="tsduck"
-PKGVER="3.38-3822"
+PKGVER="3.39-3956"
 TSDUCK_VER="https://github.com/${PKGNAME}/${PKGNAME}/releases/download/v${PKGVER}/${PKGNAME}-${PKGVER}.el9.x86_64.rpm"
-TSDUCK_MD5="566f1cee31cffc8277bba28bb8e59801"
+TSDUCK_MD5="6694b4168c04fcffe0bfb305ff9dcef0"
 
 # Prerequisites script
 PREREQ="https://raw.githubusercontent.com/${PKGNAME}/${PKGNAME}/master/scripts/install-prerequisites.sh"
