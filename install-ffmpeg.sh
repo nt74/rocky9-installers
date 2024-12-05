@@ -2,7 +2,7 @@
 # Author: Nikos Toutountzoglou, nikos.toutountzoglou@svt.se
 # Script: install-ffmpeg.sh
 # Description: Install ffmpeg with Decklink, Intel QSV, NVIDIA GPU and AMF-AMD GPU support
-# Revision: 1.7
+# Revision: 1.8
 
 # Check Linux distro
 if [ -f /etc/os-release ]; then
@@ -40,9 +40,9 @@ WORKDIR="$HOME/src/release/rocky9-ffmpeg"
 
 # FFmpeg
 PKGNAME="FFmpeg"
-PKGVER="7.0.2"
+PKGVER="7.1"
 FFMPEG_VER="https://github.com/${PKGNAME}/${PKGNAME}/archive/refs/tags/n${PKGVER}.tar.gz"
-FFMPEG_MD5="ad90d32be58fbc1a52a09a1450bf761e"
+FFMPEG_MD5="03485098fb64a000a4f7cd97e468dfff"
 
 # Blackmagic Decklink Drivers and SDK
 BM_SDK="https://drive.usercontent.google.com/download?id=11LUclY1tBLfkAGvu93PaxVpZEmyoKVTE&confirm=y"
@@ -127,10 +127,11 @@ echo "Make sure to import 'mokutil key' in UEFI systems with Secure Boot enabled
 
 # Packages necessary for building ffmpeg
 echo "Installing prerequisite packages."
-sudo dnf install \
+sudo dnf install -y \
 	AMF-devel \
 	autoconf \
 	automake \
+	clang \
 	cmake \
 	glibc \
 	intel-gmmlib-devel \
@@ -149,6 +150,8 @@ sudo dnf install \
 	mercurial \
 	mlocate \
 	nasm \
+	numactl-devel \
+	numactl-libs \
 	ocl-icd-devel \
 	opencl-headers \
 	openh264-devel \
@@ -170,8 +173,9 @@ sudo dnf install \
 # Install nvidia-cuda-toolkit
 # https://developer.nvidia.com/cuda-downloads?target_os=Linux&target_arch=x86_64&Distribution=Rocky&target_version=9
 echo "Enable NVIDIA CUDA Toolkit repo."
-CUDA_RPM="cuda-repo-rhel9-12-6-local-12.6.0_560.28.03-1.x86_64.rpm"
-CUDA_RPM_URL="https://developer.download.nvidia.com/compute/cuda/12.6.0/local_installers/${CUDA_RPM}"
+CUDA_VER="12.6.3"
+CUDA_RPM="cuda-repo-rhel9-12-6-local-${CUDA_VER}_560.35.05-1.x86_64.rpm"
+CUDA_RPM_URL="https://developer.download.nvidia.com/compute/cuda/${CUDA_VER}/local_installers/${CUDA_RPM}"
 
 if [ $(dnf list installed cuda-toolkit-12-* &>/dev/null && echo $? || echo $?) -eq 1 ]; then
 	curl -# -o ${CUDA_RPM} -LO ${CUDA_RPM_URL}
@@ -209,8 +213,8 @@ cd ${WORKDIR}
 echo "Installing 'libx265'."
 git clone https://bitbucket.org/multicoreware/x265_git
 cd x265_git/build/linux
-cmake -G "Unix Makefiles" ../../source -DCMAKE_INSTALL_PREFIX=/usr
-cmake ../../source -DCMAKE_INSTALL_PREFIX=/usr
+cmake -G "Unix Makefiles" ../../source -DCMAKE_INSTALL_PREFIX=/usr -Wno-dev
+cmake ../../source -DCMAKE_INSTALL_PREFIX=/usr -Wno-dev
 make
 sudo make install
 cd ${WORKDIR}
