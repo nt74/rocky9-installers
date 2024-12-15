@@ -4,142 +4,169 @@
 # Upstream link: https://github.com/PhilippeBekaert/snd-hdspe
 # Video: https://youtu.be/jK8XmVoK9WM?si=9iN15IBqC99z18cz
 # Description: RME HDSPe MADI/AES/RayDAT/AIO/AIO-Pro DKMS driver installation script for Rocky Linux 9
-# Revision: 1.0
+# Revision: 1.1
 
-# Stop script on NZEC
-set -e
-# Stop script if unbound variable found (use ${var:-} if intentional)
-set -u
-# By default cmd1 | cmd2 returns exit code of cmd2 regardless of cmd1 success
-# This is causing it to fail
-set -o pipefail
+# Exit immediately on error, uninitialized variable, or failed pipeline
+set -euo pipefail
 
-# Variables
-PKGDIR="$HOME/src/alsa-hdspe-dkms"
+# Constants
+PKGDIR="${HOME}/src/alsa-hdspe-dkms"
 PKGNAME="alsa-hdspe"
-PKGVER="0.0"
 RME_DKMS_PKG="https://github.com/PhilippeBekaert/snd-hdspe.git"
 RME_DKMS_VER="0.0"
-RME_DKMS_MD5=
 
-# Check Linux distro
-if [ -f /etc/os-release ]; then
-	# freedesktop.org and systemd
-	. /etc/os-release
-	OS=${ID}
-	VERS_ID=${VERSION_ID}
-	OS_ID="${VERS_ID:0:1}"
-elif type lsb_release &>/dev/null; then
-	# linuxbase.org
-	OS=$(lsb_release -si | tr '[:upper:]' '[:lower:]')
-elif [ -f /etc/lsb-release ]; then
-	# For some versions of Debian/Ubuntu without lsb_release command
-	. /etc/lsb-release
-	OS=$(printf ${DISTRIB_ID} | tr '[:upper:]' '[:lower:]')
-elif [ -f /etc/debian_version ]; then
-	# Older Debian/Ubuntu/etc.
-	OS=debian
-else
-	# Unknown
-	printf "Unknown Linux distro. Exiting!\n"
-	exit 1
-fi
+# Color codes
+INFO="\033[1;32mINFO:\033[0m"
+WARNING="\033[1;33mWARNING:\033[0m"
+ERROR="\033[1;31mERROR:\033[0m"
 
-# Check if distro is Rocky Linux 9
-if [ $OS = "rocky" ] && [ $OS_ID = "9" ]; then
-	printf "Detected 'Rocky Linux 9'. Continuing.\n"
-else
-	printf "Could not detect 'Rocky Linux 9'. Exiting.\n"
-	exit 1
-fi
+# Log actions
+exec > >(tee -i "${HOME}/install-alsa-hdspe.log") 2>&1
 
-# Prompt user with yes/no before proceeding
-printf "Welcome to RME HDSPe sound cards DKMS driver installation script.\n"
-while true; do
-	read -r -p "Proceed with installation? (y/n) " yesno
-	case "$yesno" in
-	n | N) exit 0 ;;
-	y | Y) break ;;
-	*) printf "Please answer 'y/n'.\n" ;;
-	esac
-done
+# Function to check Linux distribution
+detect_distro() {
+	echo -e "${INFO} Detecting Linux distribution."
+	if [[ -f /etc/os-release ]]; then
+		. /etc/os-release
+		OS=${ID}
+		VERSION_ID=${VERSION_ID}
+	elif command -v lsb_release &>/dev/null; then
+		OS=$(lsb_release -si | tr '[:upper:]' '[:lower:]')
+		VERSION_ID=$(lsb_release -sr)
+	elif [[ -f /etc/lsb-release ]]; then
+		. /etc/lsb-release
+		OS=$(echo "${DISTRIB_ID}" | tr '[:upper:]' '[:lower:]')
+		VERSION_ID=${DISTRIB_RELEASE}
+	else
+		echo -e "${ERROR} Unsupported Linux distribution. Exiting."
+		exit 1
+	fi
 
-# Create a working source dir
-if [ -d "${PKGDIR}" ]; then
+	if [[ "${OS}" != "rocky" || "${VERSION_ID%%.*}" != "9" ]]; then
+		echo -e "${ERROR} This script supports only Rocky Linux 9. Consider using a compatible system. Exiting."
+		exit 1
+	fi
+	echo -e "${INFO} Detected Rocky Linux 9."
+}
+
+# Prompt user for confirmation
+prompt_user() {
+	local prompt_message="${1}"
 	while true; do
-		printf "Source directory '${PKGDIR}' already exists.\n"
-		read -r -p "Delete it and reinstall? (y/n) " yesno
-		case "$yesno" in
-		n | N) exit 0 ;;
-		y | Y) break ;;
-		*) printf "Please answer 'y/n'.\n" ;;
+		read -r -p "${prompt_message} (y/n): " response
+		case "${response}" in
+		[yY]) return 0 ;;
+		[nN]) return 1 ;;
+		*) echo -e "${WARNING} Invalid input. Please enter 'y' or 'n'." ;;
 		esac
 	done
-fi
+}
 
-rm -fr ${PKGDIR}
-mkdir -v -p ${PKGDIR}
-cd ${PKGDIR}
+# Prepare the source directory
+prepare_source_dir() {
+	echo -e "${INFO} Preparing source directory."
+	if [[ -d "${PKGDIR}" ]]; then
+		echo -e "${INFO} Source directory '${PKGDIR}' already exists."
+		if ! prompt_user "Delete and recreate it?"; then
+			exit 0
+		fi
+		rm -rf "${PKGDIR}"
+	fi
+	mkdir -p "${PKGDIR}"
+	echo -e "${INFO} Created source directory: ${PKGDIR}"
+}
 
-# Enable Extra Packages for Enterprise Linux 9
-printf "Enabling Extra Packages for Enterprise Linux 9 and Development Tools.\n"
-sudo dnf install -y epel-release
-sudo /usr/bin/crb enable
+# Install dependencies
+enable_repos_and_install_deps() {
+	echo -e "${INFO} Enabling required repositories and installing dependencies."
+	sudo dnf install -y epel-release
+	sudo /usr/bin/crb enable
+	sudo dnf groupinstall -y "Development Tools"
+	local kernel_headers="kernel-headers-$(uname -r)"
+	if ! rpm -q dkms &>/dev/null; then
+		sudo dnf install -y dkms "${kernel_headers}"
+	else
+		echo -e "${INFO} dkms and kernel headers are already installed."
+	fi
+	sudo dnf makecache
+	echo -e "${INFO} Dependencies installed."
+}
 
-# Enable Development Tools
-sudo dnf groupinstall -y "Development Tools"
+# Download and prepare DKMS driver
+download_and_prepare_driver() {
+	echo -e "${INFO} Downloading driver from upstream."
+	cd "${PKGDIR}"
+	git clone "${RME_DKMS_PKG}"
+	cd "${PKGDIR}/snd-hdspe"
 
-# Update package repos cache
-sudo dnf makecache
+	echo -e "${INFO} Creating DKMS configuration."
+	mkdir -p build/usr/src/${PKGNAME}-${RME_DKMS_VER}
+	cat <<EOF >build/usr/src/${PKGNAME}-${RME_DKMS_VER}/dkms.conf
+PACKAGE_NAME="${PKGNAME}"
+PACKAGE_VERSION="${RME_DKMS_VER}"
+AUTOINSTALL="yes"
+MAKE[0]="make KVER=\$kernelver"
+CLEAN="make clean"
+BUILT_MODULE_NAME[0]="snd-hdspe"
+BUILT_MODULE_LOCATION[0]="sound/pci/hdsp/hdspe"
+DEST_MODULE_LOCATION[0]="/kernel/sound/pci/"
+SUPPORTED_KERNELS="5.10.0-*.el9.x86_64"
+EOF
 
-# Install Rocky Linux 9 dkms package
-sudo dnf install -y dkms kernel-headers-$(uname -r)
-
-# Download latest driver from upstream source
-printf "Downloading latest driver from upstream source.\n"
-git clone ${RME_DKMS_PKG}
-
-# Patches and fixes
-cd snd-hdspe
-# insert patches here...
-
-# Create DKMS driver build dir
-mkdir -p build/usr/src/${PKGNAME}-${RME_DKMS_VER}
-
-# Create a custom dkms.conf file and set correct version
-# DEST_MODULE_LOCATION is ignored on RHEL. Instead, the proper distribution-specific directory is used.
-printf 'PACKAGE_NAME=\"alsa-hdspe\"\nPACKAGE_VERSION=\"0.0\"\nAUTOINSTALL=\"yes\"\n\nMAKE[0]=\"make KVER=$kernelver\"\nCLEAN=\"make clean\"\n\nBUILT_MODULE_NAME[0]=\"snd-hdspe\"\nBUILT_MODULE_LOCATION[0]=\"sound/pci/hdsp/hdspe\"\nDEST_MODULE_LOCATION[0]=\"/kernel/sound/pci/\"\n' >dkms-custom.conf
-
-# Copy DKMS driver to correct build dirs
-install -Dm644 dkms-custom.conf build/usr/src/${PKGNAME}-${RME_DKMS_VER}/dkms.conf
-install -Dm644 Makefile build/usr/src/${PKGNAME}-${RME_DKMS_VER}/Makefile
-cp -a --no-preserve='ownership' sound build/usr/src/${PKGNAME}-${RME_DKMS_VER}
-
-# Copy final DKMS driver to kernel source dir
-cd build/usr/src
-sudo cp -R ${PKGNAME}-${RME_DKMS_VER} /usr/src
+	cp -Pr {sound,Makefile} build/usr/src/${PKGNAME}-${RME_DKMS_VER}
+	sudo cp -Pr build/usr/src/${PKGNAME}-${RME_DKMS_VER} /usr/src
+	echo -e "${INFO} Driver downloaded and prepared."
+}
 
 # Install DKMS driver
-printf "Installing DKMS driver.\n"
-sudo dkms install -m ${PKGNAME} -v ${RME_DKMS_VER}
+install_dkms_driver() {
+	echo -e "${INFO} Installing DKMS driver."
+	sudo dkms install -m "${PKGNAME}" -v "${RME_DKMS_VER}"
+	echo -e "${INFO} DKMS driver installed."
+}
 
-# Blacklist conflicting rme9652 driver
-if [ ! -f /usr/lib/modprobe.d/hdspe.conf ]; then
-	printf "blacklist snd-hdspm" | sudo tee -a /usr/lib/modprobe.d/hdspe.conf
+# Blacklist conflicting drivers
+blacklist_conflicting_driver() {
+	echo -e "${INFO} Blacklisting conflicting drivers."
+	local blacklist_file="/usr/lib/modprobe.d/hdspe.conf"
+	if lsmod | grep -q snd-hdspm; then
+		if [[ ! -f "${blacklist_file}" ]]; then
+			echo "blacklist snd-hdspm" | sudo tee "${blacklist_file}" >/dev/null
+			echo -e "${INFO} Blacklisted snd-hdspm driver."
+		else
+			echo -e "${INFO} snd-hdspm driver already blacklisted."
+		fi
+	else
+		echo -e "${INFO} No conflicting driver loaded."
+	fi
+}
+
+# Main script execution
+echo -e "${INFO} Starting RME HDSPe DKMS driver installation."
+detect_distro
+
+if ! prompt_user "Proceed with installation?"; then
+	exit 0
 fi
 
-# Prompt about final steps
-printf "\nSuccessfully installed DKMS drivers, now reboot and check\nif the module is loaded by typing 'lsmod | grep snd-hdspe'.\n"
-printf "\nIf SecureBoot is enabled, you will need the following steps:
-1. Type 'mokutil --import /var/lib/dkms/mok.pub'
-2. You'll be prompted to create a password. Enter it twice.
-3. Reboot the computer. At boot you'll see the MOK Manager EFI interface
-4. Press any key to enter it, then select 'Enroll MOK'
-5. Then select 'Continue'
-6. And confirm with 'Yes' when prompted
-7. After this, enter the password you set up with 'mokutil --import' in the previous step
-8. At this point you are done, select 'OK' and the computer will reboot trusting the key for your modules
-9. After reboot, you can inspect the MOK certificates with the following command 'mokutil --list-enrolled | grep DKMS'\n"
-printf "\nFor more information please check: https://github.com/PhilippeBekaert/snd-hdspe\n"
+prepare_source_dir
+enable_repos_and_install_deps
+download_and_prepare_driver
+install_dkms_driver
+blacklist_conflicting_driver
+
+if prompt_user "Reboot now?"; then
+	sudo reboot
+fi
+
+echo -e "${INFO} Installation complete. Please reboot and verify the module with:"
+echo -e "  lsmod | grep snd-hdspe"
+
+echo -e "${INFO} If Secure Boot is enabled, follow these steps:"
+echo -e "  1. mokutil --import /var/lib/dkms/mok.pub"
+echo -e "  2. Reboot and enroll the MOK key."
+echo -e "  3. Verify with: mokutil --list-enrolled | grep DKMS"
+
+echo -e "${INFO} For more details, visit: https://github.com/PhilippeBekaert/snd-hdspe"
 
 exit 0
