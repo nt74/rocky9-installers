@@ -110,7 +110,7 @@ CLEAN="make clean"
 BUILT_MODULE_NAME[0]="snd-hdspe"
 BUILT_MODULE_LOCATION[0]="sound/pci/hdsp/hdspe"
 DEST_MODULE_LOCATION[0]="/kernel/sound/pci/"
-SUPPORTED_KERNELS="5.10.0-*.el9.x86_64"
+SUPPORTED_KERNELS="5.14.*"
 EOF
 
 	cp -Pr {sound,Makefile} build/usr/src/${PKGNAME}-${RME_DKMS_VER}
