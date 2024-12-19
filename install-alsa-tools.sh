@@ -3,169 +3,199 @@
 # Author: nikos.toutountzoglou@svt.se
 # Upstream link: https://www.alsa-project.org
 # Description: Alsa tools for Rocky Linux 9
-# Revision: 1.0
+# Revision: 1.1
 
-# Stop script on NZEC
-set -e
-# Stop script if unbound variable found (use ${var:-} if intentional)
-set -u
-# By default cmd1 | cmd2 returns exit code of cmd2 regardless of cmd1 success
-# This is causing it to fail
-set -o pipefail
+set -euo pipefail
+IFS=$'\n\t'
 
-# Variables
-PKGDIR="$HOME/src/alsa-tools"
-PKGNAME="alsa-tools"
-PKGVER="1.2.11"
-ATOOLS_PKG="http://www.alsa-project.org/files/pub/tools/${PKGNAME}-${PKGVER}.tar.bz2"
-ATOOLS_MD5="bc5f5e5689f46a9d4a0b85dc6661732c"
+# Color codes
+INFO_COLOR="\033[1;34m"   # Blue
+WARN_COLOR="\033[1;33m"   # Yellow
+ERROR_COLOR="\033[1;31m"  # Red
+RESET_COLOR="\033[0m"     # Reset to default
 
-# Check Linux distro
-if [ -f /etc/os-release ]; then
-	# freedesktop.org and systemd
-	. /etc/os-release
-	OS=${ID}
-	VERS_ID=${VERSION_ID}
-	OS_ID="${VERS_ID:0:1}"
-elif type lsb_release &>/dev/null; then
-	# linuxbase.org
-	OS=$(lsb_release -si | tr '[:upper:]' '[:lower:]')
-elif [ -f /etc/lsb-release ]; then
-	# For some versions of Debian/Ubuntu without lsb_release command
-	. /etc/lsb-release
-	OS=$(printf ${DISTRIB_ID} | tr '[:upper:]' '[:lower:]')
-elif [ -f /etc/debian_version ]; then
-	# Older Debian/Ubuntu/etc.
-	OS=debian
-else
-	# Unknown
-	printf "Unknown Linux distro. Exiting!\n"
-	exit 1
-fi
+# Function to print INFO messages
+info() {
+    echo -e "${INFO_COLOR}[INFO] $1${RESET_COLOR}"
+}
 
-# Check if distro is Rocky Linux 9
-if [ $OS = "rocky" ] && [ $OS_ID = "9" ]; then
-	printf "Detected 'Rocky Linux 9'. Continuing.\n"
-else
-	printf "Could not detect 'Rocky Linux 9'. Exiting.\n"
-	exit 1
-fi
+# Function to print WARN messages
+warn() {
+    echo -e "${WARN_COLOR}[WARN] $1${RESET_COLOR}"
+}
 
-# Prompt user with yes/no before proceeding
-printf "Welcome to alsa-tools installation script.\n"
-while true; do
-	read -r -p "Proceed with installation? (y/n) " yesno
-	case "$yesno" in
-	n | N) exit 0 ;;
-	y | Y) break ;;
-	*) printf "Please answer 'y/n'.\n" ;;
-	esac
-done
+# Function to print ERROR messages
+error() {
+    echo -e "${ERROR_COLOR}[ERROR] $1${RESET_COLOR}"
+}
 
-# Create a working source dir
-if [ -d "${PKGDIR}" ]; then
-	while true; do
-		printf "Source directory '${PKGDIR}' already exists.\n"
-		read -r -p "Delete it and reinstall? (y/n) " yesno
-		case "$yesno" in
-		n | N) exit 0 ;;
-		y | Y) break ;;
-		*) printf "Please answer 'y/n'.\n" ;;
-		esac
-	done
-fi
+# Function to check Linux distro
+check_distro() {
+    if [[ -f /etc/os-release ]]; then
+        . /etc/os-release
+        OS=${ID}
+        VERS_ID=${VERSION_ID}
+        OS_ID="${VERS_ID:0:1}"
+    elif command -v lsb_release &>/dev/null; then
+        OS=$(lsb_release -si | tr '[:upper:]' '[:lower:]')
+    elif [[ -f /etc/lsb-release ]]; then
+        . /etc/lsb-release
+        OS=$(echo "${DISTRIB_ID}" | tr '[:upper:]' '[:lower:]')
+    elif [[ -f /etc/debian_version ]]; then
+        OS=debian
+    else
+        error "Unknown Linux distro. Exiting!"
+        exit 1
+    fi
 
-rm -fr ${PKGDIR}
-mkdir -v -p ${PKGDIR}
-cd ${PKGDIR}
+    if [[ "$OS" == "rocky" && "$OS_ID" == "9" ]]; then
+        info "Detected 'Rocky Linux 9'. Continuing."
+    else
+        error "Could not detect 'Rocky Linux 9'. Exiting."
+        exit 1
+    fi
+}
 
-# Enable Extra Packages for Enterprise Linux 9
-printf "Enabling Extra Packages for Enterprise Linux 9 and Development Tools.\n"
-sudo dnf install -y epel-release
-sudo /usr/bin/crb enable
+# Function to prompt user
+prompt_user() {
+    while true; do
+        read -r -p "$1 (y/n) " yesno
+        case "$yesno" in
+            [nN]) exit 0 ;;
+            [yY]) break ;;
+            *) warn "Please answer 'y/n'." ;;
+        esac
+    done
+}
 
-# Enable Development Tools
-sudo dnf groupinstall -y "Development Tools"
+# Function to prepare working directory
+prepare_workdir() {
+    if [[ -d "${PKGDIR}" ]]; then
+        while true; do
+            warn "Source directory '${PKGDIR}' already exists."
+            read -r -p "Delete it and reinstall? (y/n) " yesno
+            case "$yesno" in
+                [nN]) exit 0 ;;
+                [yY]) break ;;
+                *) warn "Please answer 'y/n'." ;;
+            esac
+        done
+        rm -rf "${PKGDIR}"
+    fi
 
-# Update package repos cache
-sudo dnf makecache
+    mkdir -p "${PKGDIR}"
+    cd "${PKGDIR}"
+}
 
-# Prerequisites
+# Function to install prerequisites
+install_prerequisites() {
+    info "Enabling Extra Packages for Enterprise Linux 9 and Development Tools."
+    sudo dnf install -y epel-release
+    sudo /usr/bin/crb enable
+    sudo dnf groupinstall -y "Development Tools"
+    sudo dnf makecache
 
-# Packages necessary for building alsa-tools
-sudo dnf install -y alsa-lib-devel hicolor-icon-theme fltk-devel gtk2-devel gtk3-devel
+    info "Installing necessary packages for building alsa-tools."
+    sudo dnf install -y alsa-lib-devel hicolor-icon-theme fltk-devel gtk2-devel gtk3-devel
+}
 
-# Download latest driver from upstream source
-printf "Downloading latest upstream source.\n"
-curl -# -LO ${ATOOLS_PKG}
+# Function to download and verify source
+download_and_verify() {
+    info "Downloading latest upstream source."
+    curl -fSL -o "${PKGNAME}-${PKGVER}.tar.bz2" "${ATOOLS_PKG}"
 
-# Checksum
-echo ${ATOOLS_MD5} ${PKGNAME}-${PKGVER}.tar.bz2 | md5sum -c || exit 1
+    echo "${ATOOLS_MD5} ${PKGNAME}-${PKGVER}.tar.bz2" | md5sum -c || {
+        error "Checksum verification failed. Exiting."
+        exit 1
+    }
 
-printf "Downloaded files have successfully passed MD5 checksum test. Continuing.\n"
-tar -xf ${PKGNAME}-${PKGVER}.tar.bz2
+    info "Downloaded files have successfully passed MD5 checksum test. Continuing."
+    tar -xf "${PKGNAME}-${PKGVER}.tar.bz2"
+}
 
-# Prepare and build
-cd ${PKGNAME}-${PKGVER}
+# Function to prepare and build tools
+prepare_and_build() {
+    cd "${PKGNAME}-${PKGVER}"
 
-# Uncomment to install more tools
-TOOLS=(
-	#as10k1
-	#echomixer
-	#envy24control
-	#hda-verb
-	# hdajackretask  # fails to build
-	#hdajacksensetest
-	#hdspconf
-	#hdsploader
-	hdspmixer
-	#hwmixvolume
-	#ld10k1
-	#mixartloader
-	#pcxhrloader
-	# qlo10k1  # disabled, because build is broken
-	rmedigicontrol
-	#sb16_csp
-	#seq/sbiload
-	#sscape_ctl
-	#vxloader
-	#us428control
-	#usx2yloader
-)
+    # Uncomment to install more tools
+    TOOLS=(
+        #as10k1
+        #echomixer
+        #envy24control
+        #hda-verb
+        # hdajackretask  # fails to build
+        #hdajacksensetest
+        #hdspconf
+        #hdsploader
+        hdspmixer
+        #hwmixvolume
+        #ld10k1
+        #mixartloader
+        #pcxhrloader
+        # qlo10k1  # disabled, because build is broken
+        rmedigicontrol
+        #sb16_csp
+        #seq/sbiload
+        #sscape_ctl
+        #vxloader
+        #us428control
+        #usx2yloader
+    )
 
-# Prepare
-printf "Preparing package.\n\n"
-sleep 3
+    info "Preparing package."
+    for tool in "${TOOLS[@]}"; do
+        (
+            cd "${PKGDIR}/${PKGNAME}-${PKGVER}/$tool"
+            autoreconf -vfi
+        )
+    done
 
-for tool in "${TOOLS[@]}"; do
-	(
-		cd ${PKGDIR}/${PKGNAME}-${PKGVER}/$tool
-		autoreconf -vfi
-	)
-done
+    info "Building package."
+    for tool in "${TOOLS[@]}"; do
+        (
+            cd "${PKGDIR}/${PKGNAME}-${PKGVER}/$tool"
+            ./configure --prefix=/usr --sbindir=/usr/bin
+            make
+        )
+    done
+}
 
-# Build
-printf "Building package.\n\n"
-sleep 3
+# Function to install tools
+install_tools() {
+    info "Installing package."
+    for tool in "${TOOLS[@]}"; do
+        sudo make install -C "${PKGDIR}/${PKGNAME}-${PKGVER}/$tool"
+    done
+}
 
-for tool in "${TOOLS[@]}"; do
-	(
-		cd ${PKGDIR}/${PKGNAME}-${PKGVER}/$tool
-		./configure --prefix=/usr --sbindir=/usr/bin
-		make
-	)
-done
+# Function to display final steps
+display_final_steps() {
+    info "Successfully installed alsa tools: ${TOOLS[*]}"
+    info "For more information please check: https://www.alsa-project.org"
+}
 
-# Install
-printf "Installing package.\n\n"
-sleep 3
+# Main function
+main() {
+    info "Script execution started."
 
-for tool in "${TOOLS[@]}"; do
-	sudo make install -C ${PKGDIR}/${PKGNAME}-${PKGVER}/$tool
-done
+    # Variables
+    PKGDIR="$HOME/src/alsa-tools"
+    PKGNAME="alsa-tools"
+    PKGVER="1.2.11"
+    ATOOLS_PKG="http://www.alsa-project.org/files/pub/tools/${PKGNAME}-${PKGVER}.tar.bz2"
+    ATOOLS_MD5="bc5f5e5689f46a9d4a0b85dc6661732c"
 
-# Prompt about final steps
-echo "Successfully installed alsa tools: "${TOOLS[@]}""
-printf "\nFor more information please check: https://www.alsa-project.org\n"
+    check_distro
+    prompt_user "Welcome to alsa-tools installation script. Proceed with installation?"
+    prepare_workdir
+    install_prerequisites
+    download_and_verify
+    prepare_and_build
+    install_tools
+    display_final_steps
 
-exit 0
+    info "Script execution finished."
+}
+
+# Run the main function
+main
