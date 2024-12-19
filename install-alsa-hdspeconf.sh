@@ -4,130 +4,154 @@
 # Upstream link: https://github.com/PhilippeBekaert/hdspeconf
 # Video: https://youtu.be/jK8XmVoK9WM?si=9iN15IBqC99z18cz
 # Description: RME HDSPe MADI/AES/RayDAT/AIO/AIO-Pro sound cards user space configuration tool installation script for Rocky Linux 9
-# Revision: 1.1
+# Revision: 1.2
 
-# Stop script on NZEC
-set -e
-# Stop script if unbound variable found (use ${var:-} if intentional)
-set -u
-# By default cmd1 | cmd2 returns exit code of cmd2 regardless of cmd1 success
-# This is causing it to fail
-set -o pipefail
+set -euo pipefail
+IFS=$'\n\t'
 
-# Variables
-PKGDIR="$HOME/src/hdspeconf"
-PKGNAME="alsa-hdspeconf"
-PKGVER="0.0"
-HDSPECONF_PKG="https://github.com/PhilippeBekaert/hdspeconf.git"
-HDSPECONF_VER="0.0"
-HDSPECONF_MD5=
+# Color codes
+INFO_COLOR="\033[1;34m"   # Blue
+WARN_COLOR="\033[1;33m"   # Yellow
+ERROR_COLOR="\033[1;31m"  # Red
+RESET_COLOR="\033[0m"     # Reset to default
 
-# Check Linux distro
-if [ -f /etc/os-release ]; then
-	# freedesktop.org and systemd
-	. /etc/os-release
-	OS=${ID}
-	VERS_ID=${VERSION_ID}
-	OS_ID="${VERS_ID:0:1}"
-elif type lsb_release &>/dev/null; then
-	# linuxbase.org
-	OS=$(lsb_release -si | tr '[:upper:]' '[:lower:]')
-elif [ -f /etc/lsb-release ]; then
-	# For some versions of Debian/Ubuntu without lsb_release command
-	. /etc/lsb-release
-	OS=$(printf ${DISTRIB_ID} | tr '[:upper:]' '[:lower:]')
-elif [ -f /etc/debian_version ]; then
-	# Older Debian/Ubuntu/etc.
-	OS=debian
-else
-	# Unknown
-	printf "Unknown Linux distro. Exiting!\n"
-	exit 1
-fi
+# Function to print INFO messages
+info() {
+    echo -e "${INFO_COLOR}[INFO] $1${RESET_COLOR}"
+}
 
-# Check if distro is Rocky Linux 9
-if [ $OS = "rocky" ] && [ $OS_ID = "9" ]; then
-	printf "Detected 'Rocky Linux 9'. Continuing.\n"
-else
-	printf "Could not detect 'Rocky Linux 9'. Exiting.\n"
-	exit 1
-fi
+# Function to print WARN messages
+warn() {
+    echo -e "${WARN_COLOR}[WARN] $1${RESET_COLOR}"
+}
 
-# Prompt user with yes/no before proceeding
-printf "Welcome to RME HDSPe sound cards user space configuration tool installation script.\n"
-while true; do
-	read -r -p "Proceed with installation? (y/n) " yesno
-	case "$yesno" in
-	n | N) exit 0 ;;
-	y | Y) break ;;
-	*) printf "Please answer 'y/n'.\n" ;;
-	esac
-done
+# Function to print ERROR messages
+error() {
+    echo -e "${ERROR_COLOR}[ERROR] $1${RESET_COLOR}"
+}
 
-# Create a working source dir
-if [ -d "${PKGDIR}" ]; then
-	while true; do
-		printf "Source directory '${PKGDIR}' already exists.\n"
-		read -r -p "Delete it and reinstall? (y/n) " yesno
-		case "$yesno" in
-		n | N) exit 0 ;;
-		y | Y) break ;;
-		*) printf "Please answer 'y/n'.\n" ;;
-		esac
-	done
-fi
+# Function to check Linux distro
+check_distro() {
+    if [[ -f /etc/os-release ]]; then
+        . /etc/os-release
+        OS=${ID}
+        VERS_ID=${VERSION_ID}
+        OS_ID="${VERS_ID:0:1}"
+    elif command -v lsb_release &>/dev/null; then
+        OS=$(lsb_release -si | tr '[:upper:]' '[:lower:]')
+    elif [[ -f /etc/lsb-release ]]; then
+        . /etc/lsb-release
+        OS=$(echo "${DISTRIB_ID}" | tr '[:upper:]' '[:lower:]')
+    elif [[ -f /etc/debian_version ]]; then
+        OS=debian
+    else
+        error "Unknown Linux distro. Exiting!"
+        exit 1
+    fi
 
-rm -fr ${PKGDIR}
-mkdir -v -p ${PKGDIR}
-cd ${PKGDIR}
+    if [[ "$OS" == "rocky" && "$OS_ID" == "9" ]]; then
+        info "Detected 'Rocky Linux 9'. Continuing."
+    else
+        error "Could not detect 'Rocky Linux 9'. Exiting."
+        exit 1
+    fi
+}
 
-# Enable Extra Packages for Enterprise Linux 9
-printf "Enabling Extra Packages for Enterprise Linux 9 and Development Tools.\n"
-sudo dnf install -y epel-release
-sudo /usr/bin/crb enable
+# Function to prompt user
+prompt_user() {
+    while true; do
+        read -r -p "$1 (y/n) " yesno
+        case "$yesno" in
+            [nN]) exit 0 ;;
+            [yY]) break ;;
+            *) warn "Please answer 'y/n'." ;;
+        esac
+    done
+}
 
-# Enable Development Tools
-sudo dnf groupinstall -y "Development Tools"
+# Function to prepare working directory
+prepare_workdir() {
+    if [[ -d "${PKGDIR}" ]]; then
+        while true; do
+            warn "Source directory '${PKGDIR}' already exists."
+            read -r -p "Delete it and reinstall? (y/n) " yesno
+            case "$yesno" in
+                [nN]) exit 0 ;;
+                [yY]) break ;;
+                *) warn "Please answer 'y/n'." ;;
+            esac
+        done
+        rm -rf "${PKGDIR}"
+    fi
 
-# Update package repos cache
-sudo dnf makecache
+    mkdir -p "${PKGDIR}"
+    cd "${PKGDIR}"
+}
 
-# Prerequisites
+# Function to install prerequisites
+install_prerequisites() {
+    info "Enabling Extra Packages for Enterprise Linux 9 and Development Tools."
+    sudo dnf install -y epel-release
+    sudo /usr/bin/crb enable
+    sudo dnf groupinstall -y "Development Tools"
+    sudo dnf makecache
 
-# Packages necessary for building hdspeconf
-sudo dnf install -y alsa-lib-devel wxGTK3-devel
+    info "Installing necessary packages for building hdspeconf."
+    sudo dnf install -y alsa-lib-devel wxGTK3-devel
+}
 
-# Download latest driver from upstream source
-printf "Downloading latest upstream source.\n"
-git clone ${HDSPECONF_PKG}
+# Function to download and build hdspeconf
+download_and_build() {
+    info "Downloading latest upstream source."
+    git clone "${HDSPECONF_PKG}"
 
-# Patches and fixes
-cd hdspeconf
-# insert patches here...
+    cd hdspeconf
+    # Insert patches here...
 
-# Build binary
-printf "Building package.\n\n"
-sleep 3
+    info "Building package."
+    make depend
+    make
+}
 
-make depend
-make
+# Function to install hdspeconf
+install_hdspeconf() {
+    info "Installing package."
+    sudo install -vDm755 hdspeconf -t /usr/share/${PKGNAME}
+    sudo install -vDm644 dialog-warning.png -t /usr/share/${PKGNAME}
 
-# Install binary
-printf "Installing package.\n\n"
-sleep 3
+    info "Creating symlink in '/usr/bin'."
+    echo '#!/usr/bin/env bash' | sudo tee /usr/bin/hdspeconf
+    echo 'cd /usr/share/alsa-hdspeconf' | sudo tee -a /usr/bin/hdspeconf
+    echo './hdspeconf' | sudo tee -a /usr/bin/hdspeconf
+    sudo chmod +x /usr/bin/hdspeconf
+}
 
-sudo install -vDm755 hdspeconf -t /usr/share/${PKGNAME}
-sudo install -vDm644 dialog-warning.png -t /usr/share/${PKGNAME}
+# Function to display final steps
+display_final_steps() {
+    info "Successfully installed hdspeconf user space configuration tool for RME HDSPe MADI/AES/RayDAT/AIO/AIO-Pro cards."
+    info "To open the configuration window, open a terminal window and type 'hdspeconf'."
+    info "For more information please check: https://github.com/PhilippeBekaert/hdspeconf"
+}
 
-# Create symlink in /usr/bin
-printf "Creating symlink in '/usr/bin'.\n\n"
-sleep 3
+# Main function
+main() {
+    info "Script execution started."
 
-printf '#!/usr/bin/env bash\ncd /usr/share/alsa-hdspeconf\n./hdspeconf' | sudo tee -a /usr/bin/hdspeconf
-sudo chmod +x /usr/bin/hdspeconf
+    # Variables
+    PKGDIR="$HOME/src/hdspeconf"
+    PKGNAME="alsa-hdspeconf"
+    HDSPECONF_PKG="https://github.com/PhilippeBekaert/hdspeconf.git"
 
-# Prompt about final steps
-printf "\nSuccessfully installed hdspeconf user space configuration tool for RME HDSPe MADI/AES/RayDAT/AIO/AIO-Pro cards\nTo open the configuration window open a terminal window and type 'hdspeconf'.\n"
-printf "\nFor more information please check: https://github.com/PhilippeBekaert/hdspeconf\n"
+    check_distro
+    prompt_user "Welcome to RME HDSPe sound cards user space configuration tool installation script. Proceed with installation?"
+    prepare_workdir
+    install_prerequisites
+    download_and_build
+    install_hdspeconf
+    display_final_steps
 
-exit 0
+    info "Script execution finished."
+}
+
+# Run the main function
+main
