@@ -23,6 +23,15 @@ log_error() {
     echo -e "${RED}[ERROR] $1${NC}"
 }
 
+# Function to handle errors
+handle_error() {
+    log_error "An error occurred. Exiting..."
+    exit 1
+}
+
+# Trap errors and clean up
+trap 'handle_error' ERR
+
 # Function to check Linux distro
 check_distro() {
     if [ -f /etc/os-release ]; then
@@ -50,61 +59,49 @@ check_distro() {
     fi
 }
 
-# Function to prompt user
-prompt_user() {
-    while true; do
-        read -r -p "Install ffmpeg with Decklink, Intel QSV, NVIDIA GPU and AMF-AMD GPU support? (y/n) " yesno
-        case "${yesno}" in
-            n | N) exit 0 ;;
-            y | Y) break ;;
-            *) log_warn "Please answer 'y/n'." ;;
-        esac
-    done
+# Function to prompt user for confirmation
+confirm() {
+    local prompt="$1"
+    local default_response="${2:-y}"
+    local response
+
+    read -r -p "${prompt} [Y/n] (default: ${default_response}): " response
+    response="${response:-${default_response}}"
+
+    [[ "${response}" =~ ^[Yy]$ ]]
 }
 
 # Function to prepare working directory
 prepare_workdir() {
     if [ -d "${WORKDIR}" ]; then
-        while true; do
-            log_warn "Source directory '${WORKDIR}' already exists."
-            read -r -p "Delete it and reinstall? (y/n) " yesno
-            case "${yesno}" in
-                n | N) exit 0 ;;
-                y | Y) break ;;
-                *) log_warn "Please answer 'y/n'." ;;
-            esac
-        done
+        if confirm "Source directory '${WORKDIR}' already exists. Delete it and reinstall?"; then
+            rm -rf "${WORKDIR}"
+        else
+            exit 0
+        fi
     fi
-
-    rm -rf "${WORKDIR}"
     mkdir -p "${WORKDIR}"
     cd "${WORKDIR}"
 }
 
-# Function to download sources
-download_sources() {
-    log_info "Downloading FFmpeg from upstream source."
-    curl -fSL -o "${PKGNAME}-n${PKGVER}.tar.gz" "${FFMPEG_VER}"
+# Function to download and verify a file
+download_and_verify() {
+    local url="$1"
+    local filename="$2"
+    local md5sum="$3"
 
-    log_info "Downloading Decklink Drivers v${BM_DRV_VER} and SDK v${BM_SDK_VER}."
-    curl -fSL -o decklink_sdk.tar.gz "${BM_SDK}"
-    curl -fSL -o decklink.tar.gz "${BM_DRV}"
+    log_info "Downloading ${filename}..."
+    curl -fSL -o "${filename}" "${url}"
 
-    log_info "Checking MD5 checksums."
-    echo "${FFMPEG_MD5} ${PKGNAME}-n${PKGVER}.tar.gz" | md5sum -c &&
-    echo "${BM_SDK_MD5} decklink_sdk.tar.gz" | md5sum -c &&
-    echo "${BM_DRV_MD5} decklink.tar.gz" | md5sum -c || exit 1
-
-    log_info "Downloaded files have successfully passed MD5 checksum test. Continuing."
+    log_info "Verifying MD5 checksum for ${filename}..."
+    echo "${md5sum}  ${filename}" | md5sum -c
 }
 
-# Function to extract sources
-extract_sources() {
-    log_info "Extracting file '${PKGNAME}-n${PKGVER}.tar.gz'"
-    tar -xf "${PKGNAME}-n${PKGVER}.tar.gz"
-    log_info "Extracting files 'decklink_sdk.tar.gz' and 'decklink.tar.gz'"
-    tar -xf decklink_sdk.tar.gz
-    tar -xf decklink.tar.gz
+# Function to extract a tarball
+extract_tarball() {
+    local filename="$1"
+    log_info "Extracting ${filename}..."
+    tar -xf "${filename}"
 }
 
 # Function to install prerequisites
@@ -113,7 +110,6 @@ install_prerequisites() {
     sudo dnf install -y epel-release
     sudo /usr/bin/crb enable
     sudo dnf groupinstall -y "Development Tools"
-    sudo dnf makecache
 
     log_info "Installing prerequisite packages."
     sudo dnf install -y \
@@ -214,26 +210,31 @@ install_external_libraries() {
     cd "${WORKDIR}"
 }
 
-# Function to install Decklink SDK
-install_decklink_sdk() {
-    log_info "Installing Decklink SDK libraries."
-    sudo cp -v -r --no-preserve='ownership' "Blackmagic_DeckLink_SDK_${BM_SDK_VER}/Linux/include"/* /usr/include
-    log_info "Installing Decklink 'DeviceConfigure' binary in '/usr/local/bin' folder."
-    sudo cp -v --no-preserve='ownership' "Blackmagic_DeckLink_SDK_${BM_SDK_VER}/Linux/Samples/bin/x86_64/DeviceConfigure" /usr/local/bin
-}
+# Function to install Decklink SDK and drivers
+install_decklink_sdk_and_drivers() {
+    log_info "Installing Decklink SDK and drivers..."
+    extract_tarball "${DECKLINK_SDK_FILENAME}"
 
-# Function to install Decklink drivers
-install_decklink_drivers() {
-    log_info "Installing Decklink drivers via RPM package."
-    sudo dnf install -y dkms kernel-headers-$(uname -r)
-    sudo dnf install -y "Blackmagic_Desktop_Video_Linux_${BM_DRV_VER}/rpm/x86_64/desktopvideo-${BM_DRV_VER}*.rpm"
-    log_warn "Make sure to import 'mokutil key' in UEFI systems with Secure Boot enabled."
+    # Copy SDK headers to /usr/include
+    log_info "Copying BlackMagic SDK headers to /usr/include..."
+    sudo cp -r "${SOURCE_DIR}/decklink_sdk_drivers/SDK/include" "/usr/include"
+
+    # Install the RPM driver
+    log_info "Installing RPM driver: ${DECKLINK_RPM_FILENAME}..."
+    sudo dnf install -y "${SOURCE_DIR}/decklink_sdk_drivers/drivers/rpm/x86_64/${DECKLINK_RPM_FILENAME}"
+
+    # Copy License and Documentation files
+    log_info "Copying License and Documentation files..."
+    sudo mkdir -p "${LICENSE_DIR}"
+    sudo mkdir -p "${DOC_DIR}"
+    sudo cp "${SOURCE_DIR}/decklink_sdk_drivers/drivers/License.txt" "${LICENSE_DIR}/"
+    sudo cp "${SOURCE_DIR}/decklink_sdk_drivers/SDK/Blackmagic DeckLink SDK.pdf" "${DOC_DIR}/"
 }
 
 # Function to install ffmpeg
 install_ffmpeg() {
-    log_info "Installing 'ffmpeg' version ${PKGVER}."
-    cd "${PKGNAME}-n${PKGVER}"
+    log_info "Installing 'ffmpeg' version ${FFMPEG_VERSION}."
+    cd "${FFMPEG_FILENAME%.tar.xz}"
     export PKG_CONFIG_PATH="${PKG_CONFIG_PATH}:/usr/lib/pkgconfig"
     ./configure \
         --prefix='/usr' \
@@ -269,34 +270,49 @@ install_ffmpeg() {
 log_info "Script started."
 
 # Variables
-WORKDIR="${HOME}/src/release/rocky9-ffmpeg"
-PKGNAME="FFmpeg"
-PKGVER="7.1"
-FFMPEG_VER="https://github.com/${PKGNAME}/${PKGNAME}/archive/refs/tags/n${PKGVER}.tar.gz"
-FFMPEG_MD5="03485098fb64a000a4f7cd97e468dfff"
-BM_SDK="https://drive.usercontent.google.com/download?id=11LUclY1tBLfkAGvu93PaxVpZEmyoKVTE&confirm=y"
-BM_SDK_MD5="8d6d32e917d1ea420ecbb2cb7e5fb68f"
-BM_SDK_VER="14.2"
-BM_DRV="https://drive.usercontent.google.com/download?id=1YY-b4OD5llO1Phd3EJk7MPPapmO8WW9J&confirm=y"
-BM_DRV_MD5="8de96c536c81186d5eb96f7a7a54d33f"
-BM_DRV_VER="14.3"
+FFMPEG_VERSION="7.1"
+FFMPEG_URL="https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"
+FFMPEG_FILENAME="ffmpeg-${FFMPEG_VERSION}.tar.xz"
+FFMPEG_MD5SUM="623aa63a72139a82ccb99cd6ee477b94"
+
+DECKLINK_SDK_VERSION="14.2"
+DECKLINK_SDK_URL="https://drive.usercontent.google.com/download?id=1feBeeeaqFQPZCF07am5VebRtU4jOi4tP&confirm=y"
+DECKLINK_SDK_FILENAME="decklink_sdk_drivers.tar.gz"
+DECKLINK_SDK_MD5SUM="576520bf6cfc270ea32a3c76d80aad2d"
+DECKLINK_RPM_FILENAME="desktopvideo-14.4.1a4.x86_64.rpm"
+
+ALSA_ENABLED="true"
+INSTALL_PREFIX="/usr"
+SOURCE_DIR="${HOME}/ffmpeg_decklink_sources"
+DOWNLOAD_CMD="curl -L -o"
+MD5_CHECK="md5sum -c"
+
+LICENSE_DIR="/usr/share/licenses/decklink"
+DOC_DIR="/usr/share/doc/decklink"
+
 CUDA_VER="12.6.3"
 CUDA_RPM="cuda-repo-rhel9-12-6-local-${CUDA_VER}_560.35.05-1.x86_64.rpm"
 CUDA_RPM_URL="https://developer.download.nvidia.com/compute/cuda/${CUDA_VER}/local_installers/${CUDA_RPM}"
 
-check_distro
-prompt_user
-prepare_workdir
-download_sources
-extract_sources
-install_prerequisites
-install_external_libraries
-install_decklink_sdk
-install_decklink_drivers
-install_ffmpeg
+WORKDIR="${HOME}/src/release/rocky9-ffmpeg"
 
-log_info "All done. Downloaded sources are stored in folder '${WORKDIR}'."
-sudo ldconfig
-sudo updatedb
-log_info "Script completed."
+check_distro
+if confirm "Install ffmpeg with Decklink, Intel QSV, NVIDIA GPU and AMF-AMD GPU support?"; then
+    prepare_workdir
+    download_and_verify "${FFMPEG_URL}" "${FFMPEG_FILENAME}" "${FFMPEG_MD5SUM}"
+    download_and_verify "${DECKLINK_SDK_URL}" "${DECKLINK_SDK_FILENAME}" "${DECKLINK_SDK_MD5SUM}"
+    
+    extract_tarball "${FFMPEG_FILENAME}"
+    extract_tarball "${DECKLINK_SDK_FILENAME}"
+    
+    install_prerequisites
+    install_external_libraries
+    install_decklink_sdk_and_drivers
+    install_ffmpeg
+    
+    log_info "All done. Downloaded sources are stored in folder '${WORKDIR}'."
+    sudo ldconfig
+    sudo updatedb
+    log_info "Script completed."
+fi
 exit 0
