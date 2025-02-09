@@ -208,7 +208,7 @@ install_decklink_sdk_and_drivers() {
     extract_tarball "${DECKLINK_SDK_FILENAME}"
 
     log "Copying BlackMagic SDK headers to /usr/include..."
-    sudo cp -r "${SOURCE_DIR}/decklink_sdk_drivers/SDK/include" /usr/include
+    sudo cp -rf "${SOURCE_DIR}/decklink_sdk_drivers/SDK/include"/* /usr/include
 
     log "Installing RPM driver: ${DECKLINK_RPM_FILENAME}..."
     dnf_install "${SOURCE_DIR}/decklink_sdk_drivers/drivers/rpm/x86_64/${DECKLINK_RPM_FILENAME}"
@@ -216,8 +216,8 @@ install_decklink_sdk_and_drivers() {
     log "Copying License and Documentation files..."
     sudo mkdir -p "${LICENSE_DIR}"
     sudo mkdir -p "${DOC_DIR}"
-    sudo cp "${SOURCE_DIR}/decklink_sdk_drivers/drivers/License.txt" "${LICENSE_DIR}/"
-    sudo cp "${SOURCE_DIR}/decklink_sdk_drivers/SDK/Blackmagic DeckLink SDK.pdf" "${DOC_DIR}/"
+    sudo cp -f "${SOURCE_DIR}/decklink_sdk_drivers/drivers/License.txt" "${LICENSE_DIR}/"
+    sudo cp -f "${SOURCE_DIR}/decklink_sdk_drivers/SDK/Blackmagic DeckLink SDK.pdf" "${DOC_DIR}/"
 }
 
 # Function to install ffmpeg
