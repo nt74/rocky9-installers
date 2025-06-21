@@ -1,168 +1,201 @@
 #!/usr/bin/env bash
-
+################################################################################
 # Script: install_ffmpeg_decklink_alsa.sh
-# Description: This script installs FFmpeg 7.1 and BlackMagic DeckLink SDK 14.2 on Rocky Linux 9.5.
-#              It enables ALSA and DeckLink support and installs all binaries and libraries to /usr.
-#              The script uses curl for downloads, verifies MD5 checksums, and extracts sources
-#              to a directory in the user's $HOME.
-# Usage: ./install_ffmpeg_decklink_alsa.sh
-# Author: Nikos Toutountzoglou
-# Date: 2025-02-05
-# Rev: 01
+# Description: This script installs FFmpeg with DeckLink and ALSA support on
+#              Rocky Linux 9. It is idempotent and uses status flags to
+#              avoid re-running completed steps.
+# Revision: 2.0
+# Date: 2025-06-21
+#
+# Usage:
+#   ./install_ffmpeg_decklink_alsa.sh
+#   ./install_ffmpeg_decklink_alsa.sh --force  (to re-install from scratch)
+################################################################################
 
-# Variables
-FFMPEG_VERSION="7.1"
+# --- Configuration ---
+set -e
+
+# Software Versions
+FFMPEG_VERSION="7.1.1"
+DECKLINK_SDK_VERSION="14.4.1"
+
+# URLs and Checksums
 FFMPEG_URL="https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"
 FFMPEG_FILENAME="ffmpeg-${FFMPEG_VERSION}.tar.xz"
-FFMPEG_MD5SUM="623aa63a72139a82ccb99cd6ee477b94"
+FFMPEG_MD5SUM="26f2bd7d20c6c616f31d7130c88d7250"
 
-DECKLINK_SDK_VERSION="14.2"
 DECKLINK_SDK_URL="https://drive.usercontent.google.com/download?id=1feBeeeaqFQPZCF07am5VebRtU4jOi4tP&confirm=y"
 DECKLINK_SDK_FILENAME="decklink_sdk_drivers.tar.gz"
 DECKLINK_SDK_MD5SUM="576520bf6cfc270ea32a3c76d80aad2d"
-DECKLINK_RPM_FILENAME="desktopvideo-14.4.1a4.x86_64.rpm"
 
-ALSA_ENABLED="true"
-INSTALL_PREFIX="/usr"
-SOURCE_DIR="${HOME}/ffmpeg_decklink_sources"
-DOWNLOAD_CMD="curl -L -o"
-MD5_CHECK="md5sum -c"
+# DeckLink Driver RPM - Version specific
+DECKLINK_RPM_FILENAME_OLD="desktopvideo-14.4.1a4.x86_64.rpm"
+DECKLINK_RPM_URL_NEW="https://drive.usercontent.google.com/download?id=1tAHXbZOnOKi_PGhKga_GXD8GzP48uoU3&confirm=y"
+DECKLINK_RPM_FILENAME_NEW="desktopvideo-14.4.1-a4.1.el9.x86_64.rpm"
+DECKLINK_RPM_MD5SUM_NEW="e1948617adbede12b456a39ed5ad5ad0"
 
+# Directories
+SOURCE_DIR="${HOME}/ffmpeg_decklink_alsa_sources"
+STATUS_DIR="${SOURCE_DIR}/.install_status"
 LICENSE_DIR="/usr/share/licenses/decklink"
 DOC_DIR="/usr/share/doc/decklink"
 
-# Function to handle errors
-handle_error() {
-    echo "An error occurred. Exiting..."
-    exit 1
+# --- Functions ---
+
+log() {
+    echo "--> $1"
 }
 
-# Trap errors and clean up
-trap 'handle_error' ERR
-
-# Function to prompt user for confirmation
-confirm() {
-    local prompt="$1"
-    local default_response="${2:-y}"
-    local response
-
-    read -r -p "${prompt} [Y/n] (default: ${default_response}): " response
-    response="${response:-${default_response}}"
-
-    [[ "${response}" =~ ^[Yy]$ ]]
-}
-
-# Function to delete the source directory
-delete_source_dir() {
-    if [ -d "${SOURCE_DIR}" ]; then
-        echo "Deleting source directory: ${SOURCE_DIR}..."
-        rm -rf "${SOURCE_DIR}"
-    fi
-}
-
-# Function to install all required components
-install_all_dependencies() {
-    echo "Installing Development Tools group, EPEL repository, PowerTools repository, and required dependencies..."
-
-    # Install Development Tools group
-    sudo dnf groupinstall -y "Development Tools"
-
-    # Install EPEL repository
-    sudo dnf install -y epel-release
-
-    # Enable PowerTools repository
-    sudo dnf config-manager --set-enabled crb
-
-    # Install dependencies
-    sudo dnf install -y curl gcc gcc-c++ make autoconf automake libtool \
-        alsa-lib-devel xz nasm
-}
-
-# Function to download and verify a file
-download_and_verify() {
-    local url="$1"
-    local filename="$2"
-    local md5sum="$3"
-
-    echo "Downloading ${filename}..."
-    ${DOWNLOAD_CMD} "${filename}" "${url}"
-
-    echo "Verifying MD5 checksum for ${filename}..."
-    echo "${md5sum}  ${filename}" | ${MD5_CHECK}
-}
-
-# Function to extract a tarball
-extract_tarball() {
+verify_checksum() {
     local filename="$1"
-    echo "Extracting ${filename}..."
-    if [[ "${filename}" == *.tar.xz ]]; then
-        tar -xf "${filename}"
-    elif [[ "${filename}" == *.tar.gz ]]; then
-        tar -xzf "${filename}"
+    local expected_md5sum="$2"
+    log "Verifying checksum for ${filename}..."
+    if ! echo "${expected_md5sum}  ${filename}" | md5sum -c; then
+        log "ERROR: Checksum for ${filename} failed."
+        exit 1
+    fi
+    log "Checksum for ${filename} verified successfully."
+}
+
+download_if_missing() {
+    if [ -f "$1" ]; then
+        log "File '$1' already exists. Skipping download."
     else
-        echo "Unsupported file format for extraction: ${filename}"
-        handle_error
+        log "Downloading '$1'..."
+        wget --no-check-certificate -O "$1" "$2"
     fi
 }
 
-# Function to install BlackMagic DeckLink SDK and drivers
-install_decklink_sdk_and_drivers() {
-    echo "Installing BlackMagic DeckLink SDK ${DECKLINK_SDK_VERSION} and drivers..."
-    download_and_verify "${DECKLINK_SDK_URL}" "${DECKLINK_SDK_FILENAME}" "${DECKLINK_SDK_MD5SUM}"
-    extract_tarball "${DECKLINK_SDK_FILENAME}"
-
-    # Copy SDK headers to /usr/include
-    echo "Copying BlackMagic SDK headers to /usr/include..."
-    sudo cp -rf "${SOURCE_DIR}/decklink_sdk_drivers/SDK/include"/* "/usr/include"
-
-    # Install the RPM driver
-    echo "Installing RPM driver: ${DECKLINK_RPM_FILENAME}..."
-    sudo dnf install -y "${SOURCE_DIR}/decklink_sdk_drivers/drivers/rpm/x86_64/${DECKLINK_RPM_FILENAME}"
-
-    # Copy License and Documentation files
-    echo "Copying License and Documentation files..."
-    sudo mkdir -p "${LICENSE_DIR}"
-    sudo mkdir -p "${DOC_DIR}"
-    sudo cp -f "${SOURCE_DIR}/decklink_sdk_drivers/drivers/License.txt" "${LICENSE_DIR}/"
-    sudo cp -f "${SOURCE_DIR}/decklink_sdk_drivers/SDK/Blackmagic DeckLink SDK.pdf" "${DOC_DIR}/"
+# Creates a status flag for a completed component
+set_status_flag() {
+    local component_name="$1"
+    local version_info="$2"
+    echo "${version_info}" > "${STATUS_DIR}/${component_name}"
 }
 
-# Function to install FFmpeg
-install_ffmpeg() {
-    echo "Installing FFmpeg ${FFMPEG_VERSION}..."
-    download_and_verify "${FFMPEG_URL}" "${FFMPEG_FILENAME}" "${FFMPEG_MD5SUM}"
-    extract_tarball "${FFMPEG_FILENAME}"
+# Checks if a component is already installed and matches the required version
+is_installed() {
+    local component_name="$1"
+    local required_version="$2"
+    local flag_file="${STATUS_DIR}/${component_name}"
 
-    cd "ffmpeg-${FFMPEG_VERSION}" || handle_error
-
-    # Configure FFmpeg (only ALSA and DeckLink are enabled)
-    ./configure --prefix="${INSTALL_PREFIX}" \
-                --enable-decklink \
-                --enable-alsa
-
-    # Build and install FFmpeg
-    make -j"$(nproc)"
-    sudo make install
+    if [ -f "${flag_file}" ]; then
+        installed_version=$(cat "${flag_file}")
+        if [ "${installed_version}" == "${required_version}" ]; then
+            log "Component '${component_name}' version '${required_version}' already installed. Skipping."
+            return 0 # Success (is installed)
+        else
+            log "Component '${component_name}' has a different version. Re-installing."
+            return 1 # Failure (not installed or wrong version)
+        fi
+    fi
+    return 1 # Failure (not installed)
 }
 
-# Main script execution
-if confirm "Do you want to reinstall (delete source folder and re-download/re-install)?"; then
-    delete_source_dir
+# --- Main Script Execution ---
+
+log "Script started. This will install FFmpeg with DeckLink and ALSA support."
+
+# Check for --force flag
+if [[ "$1" == "--force" ]]; then
+    log "Force mode enabled. Cleaning up previous installation."
+    rm -rf "${SOURCE_DIR}"
 fi
 
+# Check for final completion flag
+if is_installed "ffmpeg_alsa" "${FFMPEG_VERSION}"; then
+    log "FFmpeg (ALSA/DeckLink) ${FFMPEG_VERSION} is already fully installed."
+    log "Use './install_ffmpeg_decklink_alsa.sh --force' to re-install from scratch."
+    exit 0
+fi
+
+# 1. Prepare Environment
+log "Preparing source directory at ${SOURCE_DIR}"
 mkdir -p "${SOURCE_DIR}"
-cd "${SOURCE_DIR}" || handle_error
+mkdir -p "${STATUS_DIR}"
+cd "${SOURCE_DIR}"
 
-if confirm "Install all required components (Development Tools group, EPEL repository, PowerTools repository, and dependencies)?"; then
-    install_all_dependencies
+# 2. Install Prerequisites
+if ! is_installed "prerequisites_alsa" "1.0"; then
+    log "Installing prerequisite packages..."
+    dnf -y install epel-release
+    /usr/bin/crb enable
+    dnf -y groupinstall "Development Tools"
+    # Added dkms and kernel-devel for driver stability across kernel updates
+    dnf -y install \
+        alsa-lib-devel \
+        dkms \
+        kernel-devel \
+        wget \
+        xz
+    set_status_flag "prerequisites_alsa" "1.0"
 fi
 
-if confirm "Install BlackMagic DeckLink SDK and drivers?"; then
-    install_decklink_sdk_and_drivers
+# 3. Install Decklink SDK and Drivers
+OS_VERSION_MAJOR_MINOR=$(. /etc/os-release && echo "$VERSION_ID" | cut -d. -f1-2)
+if [[ "$OS_VERSION_MAJOR_MINOR" > "9.5" ]]; then
+    DECKLINK_DRIVER_VERSION_FLAG="${DECKLINK_SDK_VERSION}-new"
+else
+    DECKLINK_DRIVER_VERSION_FLAG="${DECKLINK_SDK_VERSION}-old"
 fi
 
-if confirm "Install FFmpeg ${FFMPEG_VERSION}?"; then
-    install_ffmpeg
+if ! is_installed "decklink_driver" "${DECKLINK_DRIVER_VERSION_FLAG}"; then
+    log "Installing Decklink SDK and Drivers..."
+    download_if_missing "${DECKLINK_SDK_FILENAME}" "${DECKLINK_SDK_URL}"
+    verify_checksum "${DECKLINK_SDK_FILENAME}" "${DECKLINK_SDK_MD5SUM}"
+    
+    DECKLINK_SDK_BASE_DIR="decklink_sdk_drivers"
+    if [ ! -d "${DECKLINK_SDK_BASE_DIR}" ]; then tar -xf "${DECKLINK_SDK_FILENAME}"; fi
+    
+    cp -rf "${DECKLINK_SDK_BASE_DIR}/SDK/include/"* /usr/include/
+
+    if [[ "$OS_VERSION_MAJOR_MINOR" > "9.5" ]]; then
+        download_if_missing "${DECKLINK_RPM_FILENAME_NEW}" "${DECKLINK_RPM_URL_NEW}"
+        verify_checksum "${DECKLINK_RPM_FILENAME_NEW}" "${DECKLINK_RPM_MD5SUM_NEW}"
+        RPM_INSTALL_PATH="${SOURCE_DIR}/${DECKLINK_RPM_FILENAME_NEW}"
+    else
+        RPM_INSTALL_PATH="${SOURCE_DIR}/${DECKLINK_SDK_BASE_DIR}/drivers/rpm/x86_64/${DECKLINK_RPM_FILENAME_OLD}"
+    fi
+
+    if ! rpm -q desktopvideo > /dev/null; then dnf -y localinstall "${RPM_INSTALL_PATH}"; fi
+    
+    mkdir -p "${LICENSE_DIR}" && mkdir -p "${DOC_DIR}"
+    cp -f "${DECKLINK_SDK_BASE_DIR}/drivers/License.txt" "${LICENSE_DIR}/"
+    cp -f "${DECKLINK_SDK_BASE_DIR}/SDK/Blackmagic DeckLink SDK.pdf" "${DOC_DIR}/"
+    set_status_flag "decklink_driver" "${DECKLINK_DRIVER_VERSION_FLAG}"
 fi
 
-echo "Installation completed successfully!"
+# 4. Download and Compile FFmpeg
+log "Downloading and compiling FFmpeg from official source..."
+download_if_missing "${FFMPEG_FILENAME}" "${FFMPEG_URL}"
+verify_checksum "${FFMPEG_FILENAME}" "${FFMPEG_MD5SUM}"
+
+if [ ! -d "ffmpeg-${FFMPEG_VERSION}" ]; then
+    log "Extracting FFmpeg..."
+    tar -xf "${FFMPEG_FILENAME}"
+fi
+cd "ffmpeg-${FFMPEG_VERSION}"
+
+log "Configuring FFmpeg build..."
+./configure --prefix=/usr \
+    --libdir=/usr/lib64 \
+    --shlibdir=/usr/lib64 \
+    --enable-decklink \
+    --enable-alsa
+
+log "Compiling FFmpeg (this may take a while)..."
+make -j$(nproc) && make install
+
+# --- Finalization ---
+log "Cleaning up and finalizing installation..."
+ldconfig
+updatedb
+set_status_flag "ffmpeg_alsa" "${FFMPEG_VERSION}"
+
+log "========================================================================"
+log "      Installation finished successfully!"
+log "      FFmpeg ${FFMPEG_VERSION} with DeckLink and ALSA support is ready."
+log "      Sources are located in '${SOURCE_DIR}'."
+log "========================================================================"
+
+exit 0
