@@ -123,6 +123,9 @@ check_cuda_installed() {
     if command -v nvcc >/dev/null 2>&1; then
         nvcc --version | grep "release" | sed -E 's/.*release ([0-9.]+).*/\1/' | head -1
         return 0
+    elif [ -x "/usr/local/cuda-12.9/bin/nvcc" ]; then
+        /usr/local/cuda-12.9/bin/nvcc --version | grep "release" | sed -E 's/.*release ([0-9.]+).*/\1/' | head -1
+        return 0
     elif [ -f "/usr/local/cuda/version.txt" ]; then
         grep -oE '[0-9]+\.[0-9]+' /usr/local/cuda/version.txt | head -1
         return 0
