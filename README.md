@@ -77,7 +77,7 @@ After successful installation:
 Test your installation:
 ```bash
 ffmpeg -version
-ffmpeg -f decklink -list_devices 1 -i dummy
+ffmpeg -sinks decklink
 ```
 
 ### Troubleshooting
