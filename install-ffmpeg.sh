@@ -2,8 +2,12 @@
 ################################################################################
 # Script: install-ffmpeg.sh
 # Description: Installs FFmpeg with DeckLink, NVIDIA GPU, and other support.
-# Revision: 3.1
-# Date: 2025-06-30
+# Revision: 3.2
+# Date: 2025-09-04
+# Updated for: DeckLink SDK 15.0, FFmpeg 8.0, and Rocky Linux 9.6
+#              - Includes FFmpeg source patch for SDK 15.0 compatibility.
+#              - Looks for patch file in the 'patch' subdirectory.
+#              - Updated all checksums and versions.
 ################################################################################
 
 set -e
@@ -14,27 +18,27 @@ if [ "$(id -u)" -eq 0 ]; then
     exit 1
 fi
 
+# Get the directory where the script is located
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
 # Get the calling user's home directory safely
 USER_HOME="${HOME}"
 
 # Software Versions
-FFMPEG_VERSION="7.1.1"
-DECKLINK_SDK_VERSION="14.4.1"
+FFMPEG_VERSION="8.0"
+DECKLINK_SDK_VERSION="15.0"
 NVIDIA_CUDA_VERSION="12.9.1"
 
 # URLs and Checksums
 FFMPEG_URL="https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"
 FFMPEG_FILENAME="ffmpeg-${FFMPEG_VERSION}.tar.xz"
-FFMPEG_MD5SUM="26f2bd7d20c6c616f31d7130c88d7250"
+FFMPEG_MD5SUM="2c91c725fb1b393618554ff429e4ae43"
 
-DECKLINK_SDK_URL="https://drive.usercontent.google.com/download?id=1feBeeeaqFQPZCF07am5VebRtU4jOi4tP&confirm=y"
+DECKLINK_SDK_URL="https://drive.usercontent.google.com/download?id=1UvOe7UnwgJMTCDvZZwrwxvWtE9CeepWS&confirm=y"
 DECKLINK_SDK_FILENAME="decklink_sdk_drivers.tar.gz"
-DECKLINK_SDK_MD5SUM="576520bf6cfc270ea32a3c76d80aad2d"
+DECKLINK_SDK_MD5SUM="ef3000b4b0aa0d50ec391cece9ff12e1"
 
-DECKLINK_RPM_FILENAME_OLD="desktopvideo-14.4.1a4.x86_64.rpm"
-DECKLINK_RPM_URL_NEW="https://drive.usercontent.google.com/download?id=1tAHXbZOnOKi_PGhKga_GXD8GzP48uoU3&confirm=y"
-DECKLINK_RPM_FILENAME_NEW="desktopvideo-14.4.1-a4.1.el9.x86_64.rpm"
-DECKLINK_RPM_MD5SUM_NEW="e1948617adbede12b456a39ed5ad5ad0"
+DECKLINK_RPM_FILENAME_15="desktopvideo-15.0a62.x86_64.rpm"
 
 NVIDIA_CUDA_URL="https://developer.download.nvidia.com/compute/cuda/12.9.1/local_installers/cuda-repo-rhel9-12-9-local-12.9.1_575.57.08-1.x86_64.rpm"
 NVIDIA_CUDA_RPM_FILENAME="cuda-repo-rhel9-local.rpm"
@@ -136,7 +140,7 @@ run_sudo() {
     sudo "$@"
 }
 
-log "Script started. This will install FFmpeg and many dependencies."
+log "Script started. This will install FFmpeg ${FFMPEG_VERSION} with DeckLink ${DECKLINK_SDK_VERSION} and NVIDIA support."
 
 if [[ "$1" == "--force" ]]; then
     log "Force mode enabled. Cleaning up previous installation."
@@ -171,7 +175,7 @@ if ! is_installed "prerequisites" "1.0"; then
         numactl-devel numactl-libs ocl-icd-devel opencl-headers openh264-devel \
         openjpeg2-devel openssl-devel opus-devel perl-devel pkgconf-pkg-config \
         SDL2-devel srt-devel texinfo wget xorg-x11-server-devel \
-        xwayland-devel yasm zlib-devel kernel-devel
+        xwayland-devel yasm zlib-devel kernel-devel patch
     set_status_flag "prerequisites" "1.0"
 fi
 
@@ -329,73 +333,46 @@ if ! is_installed "cuda_toolkit" "${NVIDIA_CUDA_VERSION}"; then
 fi
 
 # 4. Decklink SDK and Drivers
-OS_VERSION_MAJOR_MINOR=$(. /etc/os-release && echo "$VERSION_ID" | cut -d. -f1-2)
-if [[ "$OS_VERSION_MAJOR_MINOR" > "9.5" ]]; then
-    DECKLINK_DRIVER_VERSION_FLAG="${DECKLINK_SDK_VERSION}-new"
-else
-    DECKLINK_DRIVER_VERSION_FLAG="${DECKLINK_SDK_VERSION}-old"
-fi
-
-if is_installed "decklink_driver" "${DECKLINK_DRIVER_VERSION_FLAG}"; then
-    if ask_reinstall_component "decklink_driver" "${DECKLINK_DRIVER_VERSION_FLAG}"; then
+if is_installed "decklink_driver" "${DECKLINK_SDK_VERSION}"; then
+    if ask_reinstall_component "decklink_driver" "${DECKLINK_SDK_VERSION}"; then
         rm -f "${STATUS_DIR}/decklink_driver"
     else
         log "Skipping Decklink driver install."
     fi
 fi
 
-if ! is_installed "decklink_driver" "${DECKLINK_DRIVER_VERSION_FLAG}"; then
-    log "Installing Decklink SDK and Drivers..."
+if ! is_installed "decklink_driver" "${DECKLINK_SDK_VERSION}"; then
+    log "Installing Decklink SDK ${DECKLINK_SDK_VERSION} and Drivers..."
     download_if_missing "${DECKLINK_SDK_FILENAME}" "${DECKLINK_SDK_URL}"
     verify_checksum "${DECKLINK_SDK_FILENAME}" "${DECKLINK_SDK_MD5SUM}"
 
     DECKLINK_SDK_BASE_DIR="decklink_sdk_drivers"
     if [ ! -d "${DECKLINK_SDK_BASE_DIR}" ]; then tar -xf "${DECKLINK_SDK_FILENAME}"; fi
 
+    log "Installing DeckLink SDK headers..."
     run_sudo cp -rf "${DECKLINK_SDK_BASE_DIR}/SDK/include/"* /usr/include/
 
-    if [[ "$OS_VERSION_MAJOR_MINOR" > "9.5" ]]; then
-        download_if_missing "${DECKLINK_RPM_FILENAME_NEW}" "${DECKLINK_RPM_URL_NEW}"
-        verify_checksum "${DECKLINK_RPM_FILENAME_NEW}" "${DECKLINK_RPM_MD5SUM_NEW}"
-        RPM_INSTALL_PATH="${SOURCE_DIR}/${DECKLINK_RPM_FILENAME_NEW}"
-    else
-        RPM_INSTALL_PATH="${SOURCE_DIR}/${DECKLINK_SDK_BASE_DIR}/drivers/rpm/x86_64/${DECKLINK_RPM_FILENAME_OLD}"
+    RPM_INSTALL_PATH="${SOURCE_DIR}/${DECKLINK_SDK_BASE_DIR}/drivers/rpm/x86_64/${DECKLINK_RPM_FILENAME_15}"
+    if [ ! -f "${RPM_INSTALL_PATH}" ]; then 
+        log "ERROR: DeckLink RPM not found at: ${RPM_INSTALL_PATH}"
+        exit 1
     fi
 
-    dnf_cmd="run_sudo dnf -y localinstall"
-    dnf_reinstall_cmd="run_sudo dnf -y reinstall"
-
-    if [[ "$OS_VERSION_MAJOR_MINOR" == "9.6" ]]; then
-        while true; do
-            if ask_force_install "Decklink driver (patched for Rocky 9.6+)"; then
-                if rpm -q desktopvideo > /dev/null; then
-                    $dnf_reinstall_cmd "${RPM_INSTALL_PATH}"
-                else
-                    $dnf_cmd --allowerasing "${RPM_INSTALL_PATH}"
-                fi
-                break
-            elif ask_yes_no "Do you want to skip Decklink driver installation?" "n"; then
-                log "Skipping Decklink driver install as requested."
-                break
-            fi
-            echo "You must choose to force install or skip."
-        done
-    else
-        if ask_force_install "Decklink driver"; then
-            if rpm -q desktopvideo > /dev/null; then
-                $dnf_reinstall_cmd "${RPM_INSTALL_PATH}"
-            else
-                $dnf_cmd --allowerasing "${RPM_INSTALL_PATH}"
-            fi
+    log "Installing DeckLink driver RPM: ${DECKLINK_RPM_FILENAME_15}"
+    if ask_force_install "Decklink driver"; then
+        if rpm -q desktopvideo > /dev/null; then
+            run_sudo dnf -y reinstall "${RPM_INSTALL_PATH}"
         else
-            $dnf_cmd "${RPM_INSTALL_PATH}"
+            run_sudo dnf -y localinstall --allowerasing "${RPM_INSTALL_PATH}"
         fi
+    else
+        run_sudo dnf -y localinstall "${RPM_INSTALL_PATH}"
     fi
 
     run_sudo mkdir -p "${LICENSE_DIR}" && run_sudo mkdir -p "${DOC_DIR}"
     run_sudo cp -f "${DECKLINK_SDK_BASE_DIR}/drivers/License.txt" "${LICENSE_DIR}/"
     run_sudo cp -f "${DECKLINK_SDK_BASE_DIR}/SDK/Blackmagic DeckLink SDK.pdf" "${DOC_DIR}/"
-    set_status_flag "decklink_driver" "${DECKLINK_DRIVER_VERSION_FLAG}"
+    set_status_flag "decklink_driver" "${DECKLINK_SDK_VERSION}"
 fi
 
 # 5. Download and Compile FFmpeg
@@ -412,7 +389,7 @@ if is_installed "ffmpeg" "${FFMPEG_VERSION}"; then
 fi
 
 if [ "$ffmpeg_installed_and_skipped" -ne 1 ]; then
-    log "Downloading and compiling FFmpeg from official source..."
+    log "Downloading and compiling FFmpeg ${FFMPEG_VERSION} from official source..."
     download_if_missing "${FFMPEG_FILENAME}" "${FFMPEG_URL}"
     verify_checksum "${FFMPEG_FILENAME}" "${FFMPEG_MD5SUM}"
 
@@ -422,7 +399,21 @@ if [ "$ffmpeg_installed_and_skipped" -ne 1 ]; then
     fi
     cd "ffmpeg-${FFMPEG_VERSION}"
 
-    log "Configuring FFmpeg build..."
+    # --- FFMPEG SOURCE PATCHING ---
+    log "Applying DeckLink SDK 15.0 compatibility patch to FFmpeg..."
+    FFMPEG_PATCH_FILE="${SCRIPT_DIR}/patch/ffmpeg-decklink-sdk15-compat.patch"
+    if [ -f "${FFMPEG_PATCH_FILE}" ]; then
+        log "Found patch file at: ${FFMPEG_PATCH_FILE}"
+        patch -p1 < "${FFMPEG_PATCH_FILE}"
+        log "Patch applied successfully."
+    else
+        log "ERROR: FFmpeg patch file not found at ${FFMPEG_PATCH_FILE}"
+        log "Please ensure the patch directory exists and contains the required patch file."
+        exit 1
+    fi
+    # --- END FFMPEG PATCHING ---
+
+    log "Configuring FFmpeg ${FFMPEG_VERSION} build..."
     PKG_CONFIG_PATH="/usr/lib64/pkgconfig:/usr/lib/pkgconfig:${PKG_CONFIG_PATH}" ./configure --prefix=/usr \
         --libdir=/usr/lib64 \
         --shlibdir=/usr/lib64 \
@@ -449,8 +440,17 @@ if [ "$ffmpeg_installed_and_skipped" -ne 1 ]; then
         --enable-runtime-cpudetect \
         --enable-vaapi
 
-    log "Compiling FFmpeg (this may take a while)..."
-    make -j$(nproc) && run_sudo make install
+    log "Compiling FFmpeg ${FFMPEG_VERSION} (this may take a while)..."
+    if ! make -j$(nproc); then 
+        log "ERROR: FFmpeg compilation failed!"
+        exit 1
+    fi
+    
+    log "Installing FFmpeg ${FFMPEG_VERSION}..."
+    if ! run_sudo make install; then 
+        log "ERROR: FFmpeg installation failed!"
+        exit 1
+    fi
 
     log "Cleaning up and finalizing installation..."
     run_sudo ldconfig
@@ -459,9 +459,17 @@ if [ "$ffmpeg_installed_and_skipped" -ne 1 ]; then
 
     log "========================================================================"
     log "      Installation finished successfully!"
-    log "      FFmpeg ${FFMPEG_VERSION} with DeckLink and NVIDIA support is ready."
+    log "      FFmpeg ${FFMPEG_VERSION} with DeckLink ${DECKLINK_SDK_VERSION} and NVIDIA support is ready."
     log "      Sources are located in '${SOURCE_DIR}'."
     log "========================================================================"
+fi
+
+log "Verifying FFmpeg installation..."
+if /usr/bin/ffmpeg -version | head -1; then
+    log "DeckLink devices (if any):"
+    /usr/bin/ffmpeg -f decklink -list_devices 1 -i dummy 2>&1 | grep -E "(decklink|Blackmagic)" || log "No DeckLink devices found or driver not loaded."
+else
+    log "WARNING: FFmpeg installation may have issues"
 fi
 
 if ! ask_keep_sourcedir; then
@@ -471,4 +479,5 @@ else
     log "Keeping sourcedir and placeholder files as requested."
 fi
 
+log "Script completed successfully."
 exit 0
