@@ -1,0 +1,113 @@
+diff -ur a/libavdevice/decklink_dec.cpp b/libavdevice/decklink_dec.cpp
+--- a/libavdevice/decklink_dec.cpp	2025-08-22 11:24:18.000000000 +0200
++++ b/libavdevice/decklink_dec.cpp	2025-09-04 11:18:52.283405530 +0200
+@@ -105,43 +105,6 @@
+     {bmdModeUnknown, 0, -1, -1, -1}
+ };
+ 
+-class decklink_allocator : public IDeckLinkMemoryAllocator
+-{
+-public:
+-        decklink_allocator(): _refs(1) { }
+-        virtual ~decklink_allocator() { }
+-
+-        // IDeckLinkMemoryAllocator methods
+-        virtual HRESULT STDMETHODCALLTYPE AllocateBuffer(unsigned int bufferSize, void* *allocatedBuffer)
+-        {
+-            void *buf = av_malloc(bufferSize + AV_INPUT_BUFFER_PADDING_SIZE);
+-            if (!buf)
+-                return E_OUTOFMEMORY;
+-            *allocatedBuffer = buf;
+-            return S_OK;
+-        }
+-        virtual HRESULT STDMETHODCALLTYPE ReleaseBuffer(void* buffer)
+-        {
+-            av_free(buffer);
+-            return S_OK;
+-        }
+-        virtual HRESULT STDMETHODCALLTYPE Commit() { return S_OK; }
+-        virtual HRESULT STDMETHODCALLTYPE Decommit() { return S_OK; }
+-
+-        // IUnknown methods
+-        virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, LPVOID *ppv) { return E_NOINTERFACE; }
+-        virtual ULONG   STDMETHODCALLTYPE AddRef(void) { return ++_refs; }
+-        virtual ULONG   STDMETHODCALLTYPE Release(void)
+-        {
+-            int ret = --_refs;
+-            if (!ret)
+-                delete this;
+-            return ret;
+-        }
+-
+-private:
+-        std::atomic<int>  _refs;
+-};
+ 
+ extern "C" {
+ static void decklink_object_free(void *opaque, uint8_t *data)
+@@ -775,7 +738,17 @@
+                     (double)qsize / 1024 / 1024);
+         }
+ 
+-        videoFrame->GetBytes(&frameBytes);
++        /* SDK 15.0 API Change: The GetBytes() method is no longer on IDeckLinkVideoFrame.
++         * It has been moved to the IDeckLinkVideoBuffer interface.
++         * We must query the frame for this interface to get the buffer pointer. */
++        IDeckLinkVideoBuffer* videoBuffer = NULL;
++        if (videoFrame->QueryInterface(IID_IDeckLinkVideoBuffer, (void**)&videoBuffer) != S_OK) {
++            av_log(avctx, AV_LOG_ERROR, "Failed to query IID_IDeckLinkVideoBuffer interface\n");
++            return E_FAIL;
++        }
++        videoBuffer->GetBytes(&frameBytes);
++        videoBuffer->Release();
++
+         videoFrame->GetStreamTime(&frameTime, &frameDuration,
+                                   ctx->video_st->time_base.den);
+ 
+@@ -793,8 +766,14 @@
+                         *p++ = bars[(x * 8) / width];
+                 }
+             } else if (ctx->signal_loss_action == SIGNAL_LOSS_REPEAT && last_video_frame) {
+-                videoFrame = last_video_frame;
+-                videoFrame->GetBytes(&frameBytes);
++                videoFrame = last_video_frame; // Use the last good frame
++                IDeckLinkVideoBuffer* lastVideoBuffer = NULL;
++                if (videoFrame->QueryInterface(IID_IDeckLinkVideoBuffer, (void**)&lastVideoBuffer) != S_OK) {
++                    av_log(avctx, AV_LOG_ERROR, "Failed to query IID_IDeckLinkVideoBuffer on last good frame\n");
++                    return E_FAIL;
++                }
++                lastVideoBuffer->GetBytes(&frameBytes);
++
+             }
+ 
+             if (!no_video) {
+@@ -1067,7 +1046,6 @@
+ {
+     struct decklink_cctx *cctx = (struct decklink_cctx *)avctx->priv_data;
+     struct decklink_ctx *ctx;
+-    class decklink_allocator *allocator;
+     class decklink_input_callback *input_callback;
+     AVStream *st;
+     HRESULT result;
+@@ -1169,13 +1147,15 @@
+         goto error;
+     }
+ 
+-    allocator = new decklink_allocator();
+-    ret = (ctx->dli->SetVideoInputFrameMemoryAllocator(allocator) == S_OK ? 0 : AVERROR_EXTERNAL);
++    /* IDeckLinkMemoryAllocator and SetVideoInputFrameMemoryAllocator were removed in DeckLink SDK > 12.4.
++     * This block is now disabled for modern SDKs. */
++#if BLACKMAGIC_DECKLINK_API_VERSION <= 0x0C040000
++    class decklink_allocator *allocator = new decklink_allocator();
++    if (ctx->dli->SetVideoInputFrameMemoryAllocator(allocator) != S_OK)
++        av_log(avctx, AV_LOG_WARNING, "Failed to set custom BMD memory allocator\n");
+     allocator->Release();
+-    if (ret < 0) {
+-        av_log(avctx, AV_LOG_ERROR, "Cannot set custom memory allocator\n");
+-        goto error;
+-    }
++#endif
++
+ 
+     if (!cctx->format_code) {
+         if (decklink_autodetect(cctx) < 0) {
