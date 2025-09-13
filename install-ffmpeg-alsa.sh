@@ -286,9 +286,9 @@ fi
 log "Verifying FFmpeg installation..."
 if /usr/bin/ffmpeg -version | head -1; then
     log "ALSA devices (if any):"
-    /usr/bin/ffmpeg -f alsa -list_devices 1 -i dummy 2>&1 | grep -E "(card|device)" || log "No ALSA devices found or not properly configured."
+    /usr/bin/ffmpeg -sources alsa 2>&1 | grep -E "(card|device)" || log "No ALSA devices found or not properly configured."
     log "DeckLink devices (if any):"
-    /usr/bin/ffmpeg -f decklink -list_devices 1 -i dummy 2>&1 | grep -E "(decklink|Blackmagic)" || log "No DeckLink devices found or driver not loaded."
+    /usr/bin/ffmpeg -sources decklink 2>&1 | grep -E "(decklink|Blackmagic)" || log "No DeckLink devices found or driver not loaded."
 else
     log "WARNING: FFmpeg installation may have issues"
 fi
