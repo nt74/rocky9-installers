@@ -1,483 +1,691 @@
 #!/usr/bin/env bash
-################################################################################
-# Script: install-ffmpeg.sh
-# Description: Installs FFmpeg with DeckLink, NVIDIA GPU, and other support.
-# Revision: 3.2
-# Date: 2025-09-04
-# Updated for: DeckLink SDK 15.0, FFmpeg 8.0, and Rocky Linux 9.6
-#              - Includes FFmpeg source patch for SDK 15.0 compatibility.
-#              - Looks for patch file in the 'patch' subdirectory.
-#              - Updated all checksums and versions.
-################################################################################
+set -euo pipefail
 
-set -e
+# ============================================================
+# UNIVERSAL FFmpeg INSTALLER (Rocky Linux 9)
+# - Consolidates all FFmpeg installers into one interactive flow
+# - Supports grouped codec selection + hardware acceleration
+# - Keeps local patch folder usage
+# ============================================================
 
-# Ensure script is not run as root
-if [ "$(id -u)" -eq 0 ]; then
-    echo "Do NOT run this script as root. Please run it as a regular user."
-    exit 1
-fi
+# ----------------------------
+# 1) CONFIGURATION & VERSIONS
+# ----------------------------
 
-# Get the directory where the script is located
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-
-# Get the calling user's home directory safely
-USER_HOME="${HOME}"
-
-# Software Versions
-FFMPEG_VERSION="8.0"
-DECKLINK_SDK_VERSION="15.0"
-NVIDIA_CUDA_VERSION="12.9.1"
-
-# URLs and Checksums
+FFMPEG_VERSION="${FFMPEG_VERSION:-8.0.1}"
 FFMPEG_URL="https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"
-FFMPEG_FILENAME="ffmpeg-${FFMPEG_VERSION}.tar.xz"
-FFMPEG_MD5SUM="2c91c725fb1b393618554ff429e4ae43"
 
-DECKLINK_SDK_URL="https://drive.usercontent.google.com/download?id=1UvOe7UnwgJMTCDvZZwrwxvWtE9CeepWS&confirm=y"
-DECKLINK_SDK_FILENAME="decklink_sdk_drivers.tar.gz"
-DECKLINK_SDK_MD5SUM="ef3000b4b0aa0d50ec391cece9ff12e1"
+PREFIX="${PREFIX:-/usr/local}"
 
-DECKLINK_RPM_FILENAME_15="desktopvideo-15.0a62.x86_64.rpm"
+# H.264 / H.265
+X264_URL="https://code.videolan.org/videolan/x264.git"
+X265_VERSION="${X265_VERSION:-4.1}"
+X265_URL="http://ftp.videolan.org/pub/videolan/x265/x265_${X265_VERSION}.tar.gz"
 
-NVIDIA_CUDA_URL="https://developer.download.nvidia.com/compute/cuda/12.9.1/local_installers/cuda-repo-rhel9-12-9-local-12.9.1_575.57.08-1.x86_64.rpm"
-NVIDIA_CUDA_RPM_FILENAME="cuda-repo-rhel9-local.rpm"
-NVIDIA_CUDA_MD5SUM="419434bd6c568133da5421db0ff7f0b2"
+# MPEG-5 EVC
+XEVD_URL="https://github.com/mpeg5/xevd.git"
+XEVE_URL="https://github.com/mpeg5/xeve.git"
 
-# Directories in the user's home
-SOURCE_DIR="${USER_HOME}/ffmpeg_sources"
-STATUS_DIR="${SOURCE_DIR}/.install_status"
-LICENSE_DIR="/usr/share/licenses/decklink"
-DOC_DIR="/usr/share/doc/decklink"
+# SRT
+LIBSRT_VERSION="${LIBSRT_VERSION:-1.5.4}"
+LIBSRT_URL="https://github.com/Haivision/srt/archive/refs/tags/v${LIBSRT_VERSION}.tar.gz"
 
-log() {
-    echo "--> $1"
+# RPM Fusion
+RPMFUSION_FREE_URL="https://mirrors.rpmfusion.org/free/el/rpmfusion-free-release-9.noarch.rpm"
+RPMFUSION_NONFREE_URL="https://mirrors.rpmfusion.org/nonfree/el/rpmfusion-nonfree-release-9.noarch.rpm"
+
+# NVIDIA
+CUDA_REPO_URL="https://developer.download.nvidia.com/compute/cuda/repos/rhel9/x86_64/cuda-rhel9.repo"
+CUDA_PKG="${CUDA_PKG:-cuda-toolkit-12-9}"
+CUDA_HOME_VER="${CUDA_HOME_VER:-12.9}"
+CUDA_HOME="/usr/local/cuda-${CUDA_HOME_VER}"
+NV_CODEC_HEADERS_URL="https://github.com/FFmpeg/nv-codec-headers.git"
+
+# DeckLink SDK
+DECKLINK_SDK_URL="${DECKLINK_SDK_URL:-https://drive.usercontent.google.com/download?id=1iNUWVz2yQ2eawwO45x3OKg0tfoy3yfkg&export=download&authuser=0&confirm=t}"
+DECKLINK_SDK_MD5="${DECKLINK_SDK_MD5:-6454f6bf36314360981656ae25d7952b}"
+
+# Patch handling (prefer local patch/)
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PATCH_DIR="${SCRIPT_DIR}/patch"
+DECKLINK_PATCH_FILE="${PATCH_DIR}/ffmpeg-decklink-sdk15-compat.patch"
+DECKLINK_PATCH_MD5="${DECKLINK_PATCH_MD5:-6a193dd59ca9b075461ad2fb42079638}"
+
+# Build dir
+BUILD_ROOT="${BUILD_ROOT:-$(pwd)}"
+BUILD_DIR="${BUILD_ROOT}/ffmpeg_build"
+
+# ----------------------------
+# 2) HELPER FUNCTIONS
+# ----------------------------
+
+green() { printf "\033[0;32m%s\033[0m\n" "$*"; }
+yellow() { printf "\033[0;33m%s\033[0m\n" "$*"; }
+red() { printf "\033[0;31m%s\033[0m\n" "$*"; }
+cyan() { printf "\033[0;36m%s\033[0m\n" "$*"; }
+
+die() {
+	red "[ERR] $*"
+	exit 1
 }
 
-verify_checksum() {
-    local filename="$1"
-    local expected_md5sum="$2"
-    log "Verifying checksum for ${filename}..."
-    if ! echo "${expected_md5sum}  ${filename}" | md5sum -c; then
-        log "ERROR: Checksum for ${filename} failed."
-        exit 1
-    fi
-    log "Checksum for ${filename} verified successfully."
-}
-
-download_if_missing() {
-    if [ -f "$1" ]; then
-        log "File '$1' already exists. Skipping download."
-    else
-        log "Downloading '$1'..."
-        wget --no-check-certificate -O "$1" "$2"
-    fi
-}
-
-set_status_flag() {
-    local component_name="$1"
-    local version_info="$2"
-    echo "${version_info}" > "${STATUS_DIR}/${component_name}"
-}
-
-is_installed() {
-    local component_name="$1"
-    local required_version="$2"
-    local flag_file="${STATUS_DIR}/${component_name}"
-
-    if [ -f "${flag_file}" ]; then
-        installed_version=$(cat "${flag_file}")
-        if [ "${installed_version}" == "${required_version}" ]; then
-            return 0 # installed
-        fi
-    fi
-    return 1 # not installed
+require_root() {
+	if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+		die "Run as root (this installer performs system-wide installs)."
+	fi
 }
 
 ask_yes_no() {
-    local prompt="$1"
-    local default="${2:-n}"
-    local reply
-    if [ "$default" = "y" ]; then
-        prompt="$prompt [Y/n] "
-    else
-        prompt="$prompt [y/N] "
-    fi
-    read -rp "$prompt" reply
-    reply="${reply,,}" # to lower
-    if [[ -z "$reply" ]]; then
-        reply="$default"
-    fi
-    [[ "$reply" == "y" || "$reply" == "yes" ]]
+	local prompt="$1"
+	local default="${2:-N}"
+	local ps de ans
+	if [[ "$default" == "Y" ]]; then
+		ps="[Y/n]"
+		de=0
+	else
+		ps="[y/N]"
+		de=1
+	fi
+	read -r -p "$prompt $ps " ans || true
+	if [[ -z "${ans:-}" ]]; then return "$de"; fi
+	case "$ans" in
+	[yY]*) return 0 ;;
+	[nN]*) return 1 ;;
+	*) return "$de" ;;
+	esac
 }
 
-ask_reinstall_component() {
-    ask_yes_no "Component '$1' version '$2' is already installed. Do you want to force re-install it?" "n"
+check_md5() {
+	local f="$1"
+	local expected="$2"
+	[[ -z "$expected" ]] && return 0
+	[[ ! -f "$f" ]] && return 0
+
+	if command -v md5sum >/dev/null 2>&1; then
+		local actual
+		actual="$(md5sum "$f" | awk '{print $1}')"
+		if [[ "$actual" != "$expected" ]]; then
+			red "[ERR] MD5 mismatch for $f"
+			red "      Expected: $expected"
+			red "      Actual:   $actual"
+			ask_yes_no "Continue anyway?" "N" || exit 1
+		else
+			green "[OK] MD5 verified: $f"
+		fi
+	else
+		yellow "[WARN] md5sum not found; skipping checksum validation for $f"
+	fi
 }
 
-ask_force_install() {
-    ask_yes_no "Do you want to force install the $1 RPM package? (this may override files)" "n"
+safe_install_url() {
+	local url="$1"
+	local desc="$2"
+	cyan "Checking availability for: $desc"
+	if ! curl --output /dev/null --silent --head --fail --connect-timeout 7 "$url"; then
+		red "[ERR] Cannot reach URL for $desc: $url"
+		if ask_yes_no "Retry?" "Y"; then
+			safe_install_url "$url" "$desc"
+			return $?
+		elif ask_yes_no "Skip this package?" "N"; then
+			return 1
+		else
+			exit 1
+		fi
+	fi
+
+	dnf install -y --nogpgcheck "$url" || die "Install failed for $desc"
+	green "[OK] Installed: $desc"
 }
 
-ask_keep_sourcedir() {
-    ask_yes_no "Do you want to keep all the sourcedir placeholder files and directories?" "n"
+ensure_cmd() {
+	local cmd="$1"
+	local pkg="$2"
+	if ! command -v "$cmd" >/dev/null 2>&1; then
+		dnf install -y "$pkg" >/dev/null 2>&1 || true
+	fi
 }
 
-check_cuda_installed() {
-    if command -v nvcc >/dev/null 2>&1; then
-        nvcc --version | grep "release" | sed -E 's/.*release ([0-9.]+).*/\1/' | head -1
-        return 0
-    elif [ -x "/usr/local/cuda/bin/nvcc" ]; then
-        /usr/local/cuda/bin/nvcc --version | grep "release" | sed -E 's/.*release ([0-9.]+).*/\1/' | head -1
-        return 0
-    else
-        return 1
-    fi
+# ----------------------------
+# 3) HARDWARE DETECTION
+# ----------------------------
+
+detect_hw() {
+	ensure_cmd lspci pciutils
+
+	CPU_VENDOR="$(grep -m1 "vendor_id" /proc/cpuinfo | awk '{print $3}' || true)"
+	CPU_MODEL="$(grep -m1 "model name" /proc/cpuinfo | awk -F: '{print $2}' | xargs || true)"
+
+	HW_NV=false
+	HW_QSV=false
+	HW_AMF=false
+	HW_DL=false
+
+	if lspci -nn | grep -E "\[03..\]" | grep -q "\[10de:"; then HW_NV=true; fi
+	if lspci -nn | grep -E "\[03..\]" | grep -q "\[8086:"; then HW_QSV=true; fi
+	if lspci -nn | grep -E "\[03..\]" | grep -q "\[1002:"; then HW_AMF=true; fi
+	if lspci | grep -i "blackmagic" >/dev/null 2>&1; then HW_DL=true; fi
+
+	DEF_CUDA="N"
+	[[ "$HW_NV" == "true" ]] && DEF_CUDA="Y"
+	DEF_QSV="N"
+	[[ "$HW_QSV" == "true" ]] && DEF_QSV="Y"
+	DEF_AMF="N"
+	[[ "$HW_AMF" == "true" ]] && DEF_AMF="Y"
+	DEF_DECK="N"
+	[[ "$HW_DL" == "true" ]] && DEF_DECK="Y"
 }
 
-run_sudo() {
-    # Run a command with sudo, prompting password if needed
-    sudo "$@"
+print_hw_summary() {
+	green "############################################################"
+	green "###  UNIVERSAL FFMPEG INSTALLER (Rocky 9)                ###"
+	green "############################################################"
+	echo ""
+	echo "System Information:"
+	cyan "  CPU Vendor: $CPU_VENDOR"
+	cyan "  CPU Model:  $CPU_MODEL"
+	echo ""
+	echo "Graphics & Accelerators:"
+	[[ "$HW_NV" == "true" ]] && green "  [+] NVIDIA GPU found (NVENC Available)" || yellow "  [-] No NVIDIA GPU detected"
+	[[ "$HW_QSV" == "true" ]] && green "  [+] Intel iGPU found (QuickSync Available)" || yellow "  [-] No Intel Graphics detected"
+	[[ "$HW_AMF" == "true" ]] && green "  [+] AMD GPU found (AMF Available)" || yellow "  [-] No AMD GPU detected"
+	[[ "$HW_DL" == "true" ]] && green "  [+] DeckLink Device found" || yellow "  [-] No DeckLink Device found"
+	echo ""
 }
 
-log "Script started. This will install FFmpeg ${FFMPEG_VERSION} with DeckLink ${DECKLINK_SDK_VERSION} and NVIDIA support."
+# ----------------------------
+# 4) USER CONFIGURATION
+# ----------------------------
 
-if [[ "$1" == "--force" ]]; then
-    log "Force mode enabled. Cleaning up previous installation."
-    rm -rf "${SOURCE_DIR}"
-fi
+choose_profile() {
+	cyan "Choose installation profile:"
+	echo "  1) Minimal (FFmpeg + basic libs from dnf)"
+	echo "  2) Broadcast (DeckLink + pro libs)"
+	echo "  3) GPU Accelerated (NVENC/QSV/AMF)"
+	echo "  4) Full (everything)"
+	echo "  5) Custom (answer prompts)"
+	echo ""
 
-log "Preparing source directory at ${SOURCE_DIR}"
-mkdir -p "${SOURCE_DIR}"
-mkdir -p "${STATUS_DIR}"
-cd "${SOURCE_DIR}"
+	local choice
+	read -r -p "Select profile [1-5] (default: 5): " choice || true
+	choice="${choice:-5}"
 
-# 1. Prerequisites
-if is_installed "prerequisites" "1.0"; then
-    if ask_reinstall_component "prerequisites" "1.0"; then
-        log "Re-installing prerequisites as requested."
-        rm -f "${STATUS_DIR}/prerequisites"
-    else
-        log "Skipping prerequisites."
-    fi
-fi
-if ! is_installed "prerequisites" "1.0"; then
-    log "Installing prerequisite packages..."
-    run_sudo dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm
-    run_sudo /usr/bin/crb enable
-    run_sudo dnf -y groupinstall "Development Tools"
-    run_sudo dnf -y install \
-        AMF-devel autoconf automake clang cmake dkms elfutils-libelf-devel glibc \
-        intel-gmmlib-devel intel-mediasdk-devel lame-devel libass-devel libdrm-devel \
-        libogg-devel libpciaccess-devel libssh-devel libtool libva-devel libva-utils \
-        libvorbis-devel libvpl-devel libvpx-devel libX11-devel mercurial mlocate nasm \
-        mesa-libGL-devel mesa-libEGL-devel vulkan-headers valgrind-devel \
-        numactl-devel numactl-libs ocl-icd-devel opencl-headers openh264-devel \
-        openjpeg2-devel openssl-devel opus-devel perl-devel pkgconf-pkg-config \
-        SDL2-devel srt-devel texinfo wget xorg-x11-server-devel \
-        xwayland-devel yasm zlib-devel kernel-devel patch
-    set_status_flag "prerequisites" "1.0"
-fi
+	# Defaults
+	DO_REPOS=true
+	DO_BUILD_VIDEO_LIBS=false
+	DO_BUILD_AUDIO_LIBS=false
+	DO_BUILD_NETWORK_LIBS=false
+	DO_ENABLE_AUDIO_IO=false
+	DO_CUDA=false
+	DO_QSV=false
+	DO_AMF=false
+	DO_DECK=false
+	DO_PATCH=false
+	DO_FFMPEG=true
 
-# 2. External Libraries from Source
+	case "$choice" in
+	1)
+		# Minimal
+		DO_REPOS=true
+		DO_FFMPEG=true
+		;;
+	2)
+		# Broadcast
+		DO_REPOS=true
+		DO_BUILD_VIDEO_LIBS=true
+		DO_BUILD_AUDIO_LIBS=true
+		DO_BUILD_NETWORK_LIBS=true
+		DO_ENABLE_AUDIO_IO=true
+		DO_DECK=true
+		DO_PATCH=true
+		;;
+	3)
+		# GPU
+		DO_REPOS=true
+		DO_BUILD_VIDEO_LIBS=true
+		DO_BUILD_AUDIO_LIBS=true
+		DO_BUILD_NETWORK_LIBS=true
+		DO_ENABLE_AUDIO_IO=true
+		DO_CUDA=true
+		DO_QSV=true
+		DO_AMF=true
+		;;
+	4)
+		# Full
+		DO_REPOS=true
+		DO_BUILD_VIDEO_LIBS=true
+		DO_BUILD_AUDIO_LIBS=true
+		DO_BUILD_NETWORK_LIBS=true
+		DO_ENABLE_AUDIO_IO=true
+		DO_CUDA=true
+		DO_QSV=true
+		DO_AMF=true
+		DO_DECK=true
+		DO_PATCH=true
+		;;
+	*)
+		# Custom (interactive)
+		ask_yes_no "1. Run DNF Setup (Repos & System Libs)?" "Y" && DO_REPOS=true || DO_REPOS=false
 
-# ffnvcodec-headers
-if is_installed "ffnvcodec-headers" "git"; then
-    if ask_reinstall_component "ffnvcodec-headers" "git"; then
-        rm -f "${STATUS_DIR}/ffnvcodec-headers"
-        rm -rf nv-codec-headers
-    else
-        log "Skipping ffnvcodec-headers."
-    fi
-fi
-if ! is_installed "ffnvcodec-headers" "git"; then
-    log "Installing 'ffnvcodec-headers'..."
-    if [ ! -d "nv-codec-headers" ]; then git clone https://git.videolan.org/git/ffmpeg/nv-codec-headers.git; fi
-    cd nv-codec-headers && git pull
-    make PREFIX=/usr && run_sudo make PREFIX=/usr install
-    cd "${SOURCE_DIR}"
-    set_status_flag "ffnvcodec-headers" "git"
-fi
+		echo ""
+		cyan "Codec/Feature Groups:"
+		ask_yes_no "2. Build video codec libs (x264/x265/EVC)?" "Y" && DO_BUILD_VIDEO_LIBS=true
+		ask_yes_no "3. Build audio codec libs (fdk-aac/opus/lame/vorbis)?" "Y" && DO_BUILD_AUDIO_LIBS=true
+		ask_yes_no "4. Build network libs (SRT)?" "Y" && DO_BUILD_NETWORK_LIBS=true
+		ask_yes_no "5. Enable ALSA/PulseAudio I/O support?" "Y" && DO_ENABLE_AUDIO_IO=true
 
-# libx264
-if is_installed "libx264" "git"; then
-    if ask_reinstall_component "libx264" "git"; then
-        rm -f "${STATUS_DIR}/libx264"
-        rm -rf x264
-    else
-        log "Skipping libx264."
-    fi
-fi
-if ! is_installed "libx264" "git"; then
-    log "Installing 'libx264'..."
-    if [ ! -d "x264" ]; then git clone https://code.videolan.org/videolan/x264.git; fi
-    cd x264 && git pull
-    ./configure --prefix=/usr --libdir=/usr/lib64 --disable-avs --enable-lto --enable-pic --enable-shared
-    make -j$(nproc) && run_sudo make install
-    cd "${SOURCE_DIR}"
-    set_status_flag "libx264" "git"
-fi
+		echo ""
+		cyan "Hardware Acceleration:"
+		ask_yes_no "6. Enable NVIDIA CUDA/NVENC?" "$DEF_CUDA" && DO_CUDA=true
+		ask_yes_no "7. Enable Intel QSV (QuickSync) & VAAPI?" "$DEF_QSV" && DO_QSV=true
+		ask_yes_no "8. Enable AMD AMF Headers?" "$DEF_AMF" && DO_AMF=true
 
-# libx265
-if is_installed "libx265" "git"; then
-    if ask_reinstall_component "libx265" "git"; then
-        rm -f "${STATUS_DIR}/libx265"
-        rm -rf x265_git
-    else
-        log "Skipping libx265."
-    fi
-fi
-if ! is_installed "libx265" "git"; then
-    log "Installing 'libx265'..."
-    if [ ! -d "x265_git" ]; then git clone https://bitbucket.org/multicoreware/x265_git; fi
-    cd x265_git && git pull
-    cd build/linux
-    cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX=/usr -DENABLE_SHARED:bool=on ../../source
-    make -j$(nproc) && run_sudo make install
-    cd "${SOURCE_DIR}"
-    set_status_flag "libx265" "git"
-fi
+		echo ""
+		cyan "Broadcast:"
+		ask_yes_no "9. Enable DeckLink SDK (15.x)?" "$DEF_DECK" && DO_DECK=true
+		if [[ "$DO_DECK" == "true" ]]; then
+			ask_yes_no "10. Apply DeckLink compatibility patch from ./patch/ ?" "Y" && DO_PATCH=true
+		fi
 
-# libsrt
-if is_installed "libsrt" "git"; then
-    if ask_reinstall_component "libsrt" "git"; then
-        rm -f "${STATUS_DIR}/libsrt"
-        rm -rf srt
-    else
-        log "Skipping libsrt."
-    fi
-fi
-if ! is_installed "libsrt" "git"; then
-    log "Installing 'libsrt' from source..."
-    if [ ! -d "srt" ]; then git clone https://github.com/Haivision/srt.git; fi
-    cd srt && git pull
-    rm -rf build && mkdir build && cd build
-    cmake .. -DCMAKE_INSTALL_PREFIX=/usr -DENABLE_SHARED:bool=on
-    make -j$(nproc) && run_sudo make install
-    cd "${SOURCE_DIR}"
-    set_status_flag "libsrt" "git"
-fi
+		echo ""
+		ask_yes_no "11. Build & install FFmpeg ${FFMPEG_VERSION}?" "Y" && DO_FFMPEG=true || DO_FFMPEG=false
+		;;
+	esac
+}
 
-# libzvbi
-if is_installed "libzvbi" "0.2.35"; then
-    if ask_reinstall_component "libzvbi" "0.2.35"; then
-        rm -f "${STATUS_DIR}/libzvbi"
-        rm -rf zvbi-0.2.35
-    else
-        log "Skipping libzvbi."
-    fi
-fi
-if ! is_installed "libzvbi" "0.2.35"; then
-    log "Installing 'libzvbi' (Teletext)..."
-    download_if_missing "zvbi-0.2.35.tar.bz2" "https://sourceforge.net/projects/zapping/files/zvbi/0.2.35/zvbi-0.2.35.tar.bz2/download"
-    if [ ! -d "zvbi-0.2.35" ]; then tar -xf "zvbi-0.2.35.tar.bz2"; fi
-    cd zvbi-0.2.35
-    ./configure --prefix=/usr --sbindir=/usr/bin
-    make -j$(nproc) && run_sudo make install
-    cd "${SOURCE_DIR}"
-    set_status_flag "libzvbi" "0.2.35"
-fi
+# ----------------------------
+# 5) REPOS & SYSTEM PACKAGES
+# ----------------------------
 
-# libklvanc
-if is_installed "libklvanc" "git"; then
-    if ask_reinstall_component "libklvanc" "git"; then
-        rm -f "${STATUS_DIR}/libklvanc"
-        rm -rf libklvanc
-    else
-        log "Skipping libklvanc."
-    fi
-fi
-if ! is_installed "libklvanc" "git"; then
-    log "Installing 'libklvanc' (VANC SMPTE2038)..."
-    if [ ! -d "libklvanc" ]; then git clone https://github.com/stoth68000/libklvanc.git; fi
-    cd libklvanc && git pull
-    ./autogen.sh --build
-    ./configure --prefix=/usr --libdir=/usr/lib64
-    make -j$(nproc) && run_sudo make install
-    cd "${SOURCE_DIR}"
-    set_status_flag "libklvanc" "git"
-fi
+install_prereqs() {
+	cyan "--- Configuring Base Repos ---"
+	dnf install -y epel-release
+	crb enable || true
 
-# 3. NVIDIA CUDA Toolkit
-cuda_installed_version=$(check_cuda_installed || echo "")
-if [ -n "$cuda_installed_version" ]; then
-    log "CUDA detected: version $cuda_installed_version"
-    if [ "$cuda_installed_version" = "$NVIDIA_CUDA_VERSION" ]; then
-        if ask_reinstall_component "CUDA Toolkit" "$cuda_installed_version"; then
-            log "Reinstalling CUDA as requested."
-            rm -f "${STATUS_DIR}/cuda_toolkit"
-        else
-            set_status_flag "cuda_toolkit" "${NVIDIA_CUDA_VERSION}"
-        fi
-    else
-        log "CUDA version mismatch, will attempt install/upgrade."
-        rm -f "${STATUS_DIR}/cuda_toolkit"
-    fi
-fi
+	if ! dnf repolist | grep -q "rpmfusion-free"; then
+		safe_install_url "$RPMFUSION_FREE_URL" "RPMFusion Free"
+	fi
+	if ! dnf repolist | grep -q "rpmfusion-nonfree"; then
+		safe_install_url "$RPMFUSION_NONFREE_URL" "RPMFusion Non-Free"
+	fi
 
-if ! is_installed "cuda_toolkit" "${NVIDIA_CUDA_VERSION}"; then
-    log "Installing NVIDIA CUDA Toolkit..."
-    if [ ! -f "${NVIDIA_CUDA_RPM_FILENAME}" ]; then
-        download_if_missing "${NVIDIA_CUDA_RPM_FILENAME}" "${NVIDIA_CUDA_URL}"
-        verify_checksum "${NVIDIA_CUDA_RPM_FILENAME}" "${NVIDIA_CUDA_MD5SUM}"
-    fi
-    if ! rpm -q cuda-repo-rhel9-12-9-local > /dev/null; then
-        if ask_force_install "NVIDIA CUDA"; then
-            run_sudo dnf -y localinstall --allowerasing "${NVIDIA_CUDA_RPM_FILENAME}"
-        else
-            run_sudo dnf -y localinstall "${NVIDIA_CUDA_RPM_FILENAME}"
-        fi
-    fi
-    run_sudo dnf clean all && run_sudo dnf -y install cuda-toolkit
-    set_status_flag "cuda_toolkit" "${NVIDIA_CUDA_VERSION}"
-fi
+	cyan "--- Installing Build Tools ---"
+	dnf groupinstall -y "Development Tools"
+	dnf install -y cmake nasm yasm pkgconfig wget curl git automake autoconf libtool \
+		bzip2 xz zlib-devel openssl-devel libgomp \
+		dkms kernel-devel kernel-headers
 
-# 4. Decklink SDK and Drivers
-if is_installed "decklink_driver" "${DECKLINK_SDK_VERSION}"; then
-    if ask_reinstall_component "decklink_driver" "${DECKLINK_SDK_VERSION}"; then
-        rm -f "${STATUS_DIR}/decklink_driver"
-    else
-        log "Skipping Decklink driver install."
-    fi
-fi
+	cyan "--- Installing Core Multimedia Development Libs ---"
+	# Baseline set (works for most)
+	dnf install -y \
+		mbedtls-devel cjson-devel \
+		libdav1d-devel svt-av1-devel fdk-aac-free-devel \
+		libklvanc-devel libvpx-devel libvorbis-devel opus-devel lame-devel \
+		libass-devel freetype-devel \
+		openjpeg2-devel libxml2-devel zeromq-devel libv4l-devel \
+		librsvg2-devel \
+		libjpeg-turbo-devel libpng-devel libtiff-devel libwebp-devel jbigkit-devel
 
-if ! is_installed "decklink_driver" "${DECKLINK_SDK_VERSION}"; then
-    log "Installing Decklink SDK ${DECKLINK_SDK_VERSION} and Drivers..."
-    download_if_missing "${DECKLINK_SDK_FILENAME}" "${DECKLINK_SDK_URL}"
-    verify_checksum "${DECKLINK_SDK_FILENAME}" "${DECKLINK_SDK_MD5SUM}"
+	# Optional network libs / broadcast libs (still OK to install even if group disabled)
+	dnf install -y librist-devel || true
 
-    DECKLINK_SDK_BASE_DIR="decklink_sdk_drivers"
-    if [ ! -d "${DECKLINK_SDK_BASE_DIR}" ]; then tar -xf "${DECKLINK_SDK_FILENAME}"; fi
+	if [[ "${DO_ENABLE_AUDIO_IO}" == "true" ]]; then
+		dnf install -y alsa-lib-devel pulseaudio-libs-devel
+	fi
 
-    log "Installing DeckLink SDK headers..."
-    run_sudo cp -rf "${DECKLINK_SDK_BASE_DIR}/SDK/include/"* /usr/include/
+	if [[ "${DO_QSV}" == "true" ]]; then
+		dnf install -y libmfx-devel intel-media-driver libva-intel-driver libvpl-devel libva-devel libdrm-devel || true
+	else
+		# still good to have VAAPI libs if doing video work
+		dnf install -y libva-devel libdrm-devel || true
+	fi
 
-    RPM_INSTALL_PATH="${SOURCE_DIR}/${DECKLINK_SDK_BASE_DIR}/drivers/rpm/x86_64/${DECKLINK_RPM_FILENAME_15}"
-    if [ ! -f "${RPM_INSTALL_PATH}" ]; then 
-        log "ERROR: DeckLink RPM not found at: ${RPM_INSTALL_PATH}"
-        exit 1
-    fi
+	if [[ "${DO_AMF}" == "true" ]]; then
+		dnf install -y mesa-dri-drivers libva-utils AMF-devel || true
+	fi
+}
 
-    log "Installing DeckLink driver RPM: ${DECKLINK_RPM_FILENAME_15}"
-    if ask_force_install "Decklink driver"; then
-        if rpm -q desktopvideo > /dev/null; then
-            run_sudo dnf -y reinstall "${RPM_INSTALL_PATH}"
-        else
-            run_sudo dnf -y localinstall --allowerasing "${RPM_INSTALL_PATH}"
-        fi
-    else
-        run_sudo dnf -y localinstall "${RPM_INSTALL_PATH}"
-    fi
+export_paths() {
+	export PKG_CONFIG_PATH="${PREFIX}/lib/pkgconfig:${PREFIX}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
+	export LD_LIBRARY_PATH="${PREFIX}/lib:${PREFIX}/lib64:${LD_LIBRARY_PATH:-}"
+	export PATH="${PREFIX}/bin:$PATH"
+}
 
-    run_sudo mkdir -p "${LICENSE_DIR}" && run_sudo mkdir -p "${DOC_DIR}"
-    run_sudo cp -f "${DECKLINK_SDK_BASE_DIR}/drivers/License.txt" "${LICENSE_DIR}/"
-    run_sudo cp -f "${DECKLINK_SDK_BASE_DIR}/SDK/Blackmagic DeckLink SDK.pdf" "${DOC_DIR}/"
-    set_status_flag "decklink_driver" "${DECKLINK_SDK_VERSION}"
-fi
+# ----------------------------
+# 6) HARDWARE SETUP (OPTIONAL)
+# ----------------------------
 
-# 5. Download and Compile FFmpeg
-ffmpeg_installed_and_skipped=0
-if is_installed "ffmpeg" "${FFMPEG_VERSION}"; then
-    if ask_reinstall_component "ffmpeg" "${FFMPEG_VERSION}"; then
-        rm -f "${STATUS_DIR}/ffmpeg"
-        rm -rf "ffmpeg-${FFMPEG_VERSION}"
-    else
-        log "FFmpeg ${FFMPEG_VERSION} is already fully installed."
-        log "Use './install-ffmpeg.sh --force' to re-install from scratch."
-        ffmpeg_installed_and_skipped=1
-    fi
-fi
+setup_nvidia() {
+	cyan "--- Setting up NVIDIA CUDA + nv-codec-headers ---"
 
-if [ "$ffmpeg_installed_and_skipped" -ne 1 ]; then
-    log "Downloading and compiling FFmpeg ${FFMPEG_VERSION} from official source..."
-    download_if_missing "${FFMPEG_FILENAME}" "${FFMPEG_URL}"
-    verify_checksum "${FFMPEG_FILENAME}" "${FFMPEG_MD5SUM}"
+	if ! command -v nvcc >/dev/null 2>&1; then
+		dnf config-manager --add-repo "$CUDA_REPO_URL" || true
+		dnf install -y "$CUDA_PKG" --setopt=install_weak_deps=False
+	fi
 
-    if [ ! -d "ffmpeg-${FFMPEG_VERSION}" ]; then
-        log "Extracting FFmpeg..."
-        tar -xf "${FFMPEG_FILENAME}"
-    fi
-    cd "ffmpeg-${FFMPEG_VERSION}"
+	[[ -d "$CUDA_HOME" ]] && export PATH="${CUDA_HOME}/bin:$PATH"
 
-    # --- FFMPEG SOURCE PATCHING ---
-    log "Applying DeckLink SDK 15.0 compatibility patch to FFmpeg..."
-    FFMPEG_PATCH_FILE="${SCRIPT_DIR}/patch/ffmpeg-decklink-sdk15-compat.patch"
-    if [ -f "${FFMPEG_PATCH_FILE}" ]; then
-        log "Found patch file at: ${FFMPEG_PATCH_FILE}"
-        patch -p1 < "${FFMPEG_PATCH_FILE}"
-        log "Patch applied successfully."
-    else
-        log "ERROR: FFmpeg patch file not found at ${FFMPEG_PATCH_FILE}"
-        log "Please ensure the patch directory exists and contains the required patch file."
-        exit 1
-    fi
-    # --- END FFMPEG PATCHING ---
+	cd "$BUILD_DIR"
+	if [[ ! -d "nv-codec-headers" ]]; then
+		git clone "$NV_CODEC_HEADERS_URL" nv-codec-headers
+	fi
+	cd nv-codec-headers
+	make -j"$(nproc)" PREFIX="${PREFIX}"
+	make install PREFIX="${PREFIX}"
+}
 
-    log "Configuring FFmpeg ${FFMPEG_VERSION} build..."
-    PKG_CONFIG_PATH="/usr/lib64/pkgconfig:/usr/lib/pkgconfig:${PKG_CONFIG_PATH}" ./configure --prefix=/usr \
-        --libdir=/usr/lib64 \
-        --shlibdir=/usr/lib64 \
-        --disable-debug \
-        --enable-shared \
-        --enable-gpl \
-        --enable-nonfree \
-        --enable-decklink \
-        --enable-libklvanc \
-        --enable-libzvbi \
-        --enable-libdrm \
-        --enable-libopenh264 \
-        --enable-libopenjpeg \
-        --enable-libsrt \
-        --enable-libssh \
-        --enable-libvpl \
-        --enable-libx264 \
-        --enable-libx265 \
-        --enable-nvdec \
-        --enable-nvenc \
-        --enable-opencl \
-        --enable-openssl \
-        --enable-pic \
-        --enable-runtime-cpudetect \
-        --enable-vaapi
+setup_decklink() {
+	cyan "--- Setting up DeckLink SDK ---"
 
-    log "Compiling FFmpeg ${FFMPEG_VERSION} (this may take a while)..."
-    if ! make -j$(nproc); then 
-        log "ERROR: FFmpeg compilation failed!"
-        exit 1
-    fi
-    
-    log "Installing FFmpeg ${FFMPEG_VERSION}..."
-    if ! run_sudo make install; then 
-        log "ERROR: FFmpeg installation failed!"
-        exit 1
-    fi
+	cd "$BUILD_DIR"
+	if [[ ! -f "decklink_sdk.tar.gz" ]]; then
+		wget -O "decklink_sdk.tar.gz" "$DECKLINK_SDK_URL"
+	fi
+	check_md5 "decklink_sdk.tar.gz" "$DECKLINK_SDK_MD5"
 
-    log "Cleaning up and finalizing installation..."
-    run_sudo ldconfig
-    run_sudo updatedb
-    set_status_flag "ffmpeg" "${FFMPEG_VERSION}"
+	rm -rf decklink_sdk
+	mkdir -p decklink_sdk
+	tar xf "decklink_sdk.tar.gz" -C decklink_sdk --strip-components=1 2>/dev/null || tar xf "decklink_sdk.tar.gz" -C decklink_sdk
 
-    log "========================================================================"
-    log "      Installation finished successfully!"
-    log "      FFmpeg ${FFMPEG_VERSION} with DeckLink ${DECKLINK_SDK_VERSION} and NVIDIA support is ready."
-    log "      Sources are located in '${SOURCE_DIR}'."
-    log "========================================================================"
-fi
+	local dl_inc
+	dl_inc="$(find "${BUILD_DIR}/decklink_sdk" -name "DeckLinkAPI.h" -printf "%h\n" | head -n 1 || true)"
 
-log "Verifying FFmpeg installation..."
-if /usr/bin/ffmpeg -version | head -1; then
-    log "DeckLink devices (if any):"
-    /usr/bin/ffmpeg -sources decklink 2>&1 | grep -E "(decklink|Blackmagic)" || log "No DeckLink devices found or driver not loaded."
-else
-    log "WARNING: FFmpeg installation may have issues"
-fi
+	if [[ -n "$dl_inc" ]]; then
+		mkdir -p "${PREFIX}/include"
+		find "$dl_inc" -type f \( -name '*.h' -o -name '*.cpp' \) -exec cp -f {} "${PREFIX}/include/" \;
+		green "[OK] DeckLink SDK headers installed into ${PREFIX}/include."
+	else
+		die "DeckLink headers not found in extracted SDK."
+	fi
+}
 
-if ! ask_keep_sourcedir; then
-    log "Deleting sourcedir and placeholder files as requested (status flags preserved)."
-    find "${SOURCE_DIR}" -mindepth 1 -maxdepth 1 ! -name ".install_status" -exec rm -rf {} +
-else
-    log "Keeping sourcedir and placeholder files as requested."
-fi
+# ----------------------------
+# 7) SOURCE BUILDS (OPTIONAL)
+# ----------------------------
 
-log "Script completed successfully."
-exit 0
+build_srt() {
+	cyan "--- Building SRT (v${LIBSRT_VERSION}) ---"
+	cd "$BUILD_DIR"
+
+	if [[ -d "srt-source" ]]; then
+		yellow "SRT already present; skipping."
+		return
+	fi
+
+	wget -O srt.tar.gz "$LIBSRT_URL"
+	mkdir -p srt-source
+	tar xf srt.tar.gz -C srt-source --strip-components=1
+	cd srt-source
+	cmake -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DENABLE_SHARED=ON -DENABLE_STATIC=ON -DENABLE_APPS=OFF .
+	make -j"$(nproc)"
+	make install
+}
+
+build_x264() {
+	cyan "--- Building x264 ---"
+	cd "$BUILD_DIR"
+
+	if [[ -d "x264-source" ]]; then
+		yellow "x264 already present; skipping."
+		return
+	fi
+
+	git clone "$X264_URL" x264-source
+	cd x264-source
+	./configure --prefix="${PREFIX}" --bindir="${PREFIX}/bin" --enable-static --enable-pic
+	make -j"$(nproc)"
+	make install
+}
+
+build_x265() {
+	cyan "--- Building x265 (v${X265_VERSION}) ---"
+	cd "$BUILD_DIR"
+
+	if [[ -d "x265-source" ]]; then
+		yellow "x265 already present; skipping."
+		return
+	fi
+
+	wget -O x265.tar.gz "$X265_URL"
+	mkdir -p x265-source
+	tar xf x265.tar.gz -C x265-source --strip-components=1
+	cd x265-source/build/linux
+	cmake -G "Unix Makefiles" ../../source -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DENABLE_SHARED=ON
+	make -j"$(nproc)"
+	make install
+}
+
+build_xevd() {
+	cyan "--- Building MPEG-5 EVC Decoder (xevd) ---"
+	cd "$BUILD_DIR"
+
+	if [[ -d "xevd-source" ]]; then
+		yellow "xevd already present; skipping."
+		return
+	fi
+
+	git clone "$XEVD_URL" xevd-source
+	cd xevd-source
+	mkdir -p build
+	cd build
+	cmake -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DCMAKE_BUILD_TYPE=Release ..
+	make -j"$(nproc)"
+	make install
+}
+
+build_xeve() {
+	cyan "--- Building MPEG-5 EVC Encoder (xeve) ---"
+	cd "$BUILD_DIR"
+
+	if [[ -d "xeve-source" ]]; then
+		yellow "xeve already present; skipping."
+		return
+	fi
+
+	git clone "$XEVE_URL" xeve-source
+	cd xeve-source
+	mkdir -p build
+	cd build
+	cmake -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DCMAKE_BUILD_TYPE=Release ..
+	make -j"$(nproc)"
+	make install
+}
+
+# ----------------------------
+# 8) FFMPEG BUILD
+# ----------------------------
+
+fetch_ffmpeg() {
+	cd "$BUILD_DIR"
+	cyan "--- Fetching FFmpeg ${FFMPEG_VERSION} ---"
+
+	if ! wget -q --spider "$FFMPEG_URL"; then
+		yellow "FFmpeg tarball not found at ${FFMPEG_URL}. Falling back to Git master."
+		rm -rf ffmpeg-src
+		git clone https://git.ffmpeg.org/ffmpeg.git ffmpeg-src
+	else
+		[[ -f ffmpeg.tar.xz ]] || wget -c -O ffmpeg.tar.xz "$FFMPEG_URL"
+		rm -rf ffmpeg-src
+		mkdir -p ffmpeg-src
+		tar xf ffmpeg.tar.xz -C ffmpeg-src --strip-components=1
+	fi
+}
+
+apply_decklink_patch() {
+	[[ "${DO_PATCH}" != "true" ]] && return 0
+
+	if [[ ! -f "$DECKLINK_PATCH_FILE" ]]; then
+		die "Patch file not found: $DECKLINK_PATCH_FILE"
+	fi
+
+	cyan "--- Applying DeckLink patch: ${DECKLINK_PATCH_FILE} ---"
+	check_md5 "$DECKLINK_PATCH_FILE" "$DECKLINK_PATCH_MD5"
+
+	patch -p1 <"$DECKLINK_PATCH_FILE" || yellow "[WARN] Patch failed or already applied."
+}
+
+build_ffmpeg() {
+	cd "$BUILD_DIR/ffmpeg-src"
+	cyan "--- Configuring FFmpeg ---"
+
+	local cfg=(
+		"--prefix=${PREFIX}"
+		"--bindir=${PREFIX}/bin"
+		"--pkg-config-flags=--static"
+		"--extra-cflags=-I${PREFIX}/include"
+		"--extra-ldflags=-L${PREFIX}/lib -L${PREFIX}/lib64"
+		"--extra-libs=-lpthread -lm"
+		"--enable-gpl"
+		"--enable-nonfree"
+		"--enable-version3"
+		"--enable-openssl"
+		"--enable-protocol=https"
+		"--enable-libopenjpeg"
+		"--enable-libxml2"
+		"--enable-libzmq"
+		"--enable-librsvg"
+		"--enable-libv4l2"
+		"--enable-libass"
+		"--enable-libfreetype"
+		"--enable-libvpx"
+	)
+
+	# --- Network libs ---
+	if [[ "${DO_BUILD_NETWORK_LIBS}" == "true" ]]; then
+		cfg+=("--enable-libsrt")
+	fi
+	cfg+=("--enable-librist") # installed via dnf in prereqs (safe even if unused)
+
+	# --- Audio codecs ---
+	if [[ "${DO_BUILD_AUDIO_LIBS}" == "true" ]]; then
+		cfg+=(
+			"--enable-libfdk-aac"
+			"--enable-libvorbis"
+			"--enable-libopus"
+			"--enable-libmp3lame"
+		)
+	fi
+
+	# --- Audio I/O ---
+	if [[ "${DO_ENABLE_AUDIO_IO}" == "true" ]]; then
+		cfg+=("--enable-alsa" "--enable-libpulse")
+	fi
+
+	# --- Video libs ---
+	if [[ "${DO_BUILD_VIDEO_LIBS}" == "true" ]]; then
+		cfg+=("--enable-libx264" "--enable-libx265" "--enable-libxevd" "--enable-libxeve")
+	fi
+
+	# --- AV1 libs ---
+	cfg+=("--enable-libsvtav1" "--enable-libdav1d")
+
+	# --- VAAPI baseline (if libs exist) ---
+	cfg+=("--enable-vaapi")
+
+	# --- DeckLink ---
+	if [[ "${DO_DECK}" == "true" ]]; then
+		cfg+=("--enable-decklink")
+	fi
+
+	# --- NVIDIA ---
+	if [[ "${DO_CUDA}" == "true" ]]; then
+		cfg+=(
+			"--enable-cuda-nvcc"
+			"--enable-nvenc"
+			"--enable-libnpp"
+			"--extra-cflags=-I${CUDA_HOME}/include"
+			"--extra-ldflags=-L${CUDA_HOME}/lib64"
+		)
+	fi
+
+	# --- Intel QSV ---
+	if [[ "${DO_QSV}" == "true" ]]; then
+		cfg+=("--enable-libmfx")
+	fi
+
+	# --- AMD AMF ---
+	if [[ "${DO_AMF}" == "true" ]]; then
+		cfg+=("--enable-amf")
+	fi
+
+	echo ""
+	yellow "FFmpeg configuration flags:"
+	printf '  %s\n' "${cfg[@]}"
+	echo ""
+
+	./configure "${cfg[@]}"
+	make -j"$(nproc)"
+	make install
+
+	echo "${PREFIX}/lib" >/etc/ld.so.conf.d/ffmpeg-custom.conf
+	echo "${PREFIX}/lib64" >>/etc/ld.so.conf.d/ffmpeg-custom.conf
+	ldconfig
+
+	green "FFmpeg installed into: ${PREFIX}/bin/ffmpeg"
+}
+
+verify_install() {
+	echo ""
+	green "DONE! Suggested verification:"
+	echo "  ${PREFIX}/bin/ffmpeg -hide_banner -version"
+	echo "  ${PREFIX}/bin/ffmpeg -hide_banner -codecs | grep -E 'evc|jpeg|x264|x265|svt|dav1d' || true"
+	if [[ "${DO_DECK}" == "true" ]]; then
+		echo "  ${PREFIX}/bin/ffmpeg -hide_banner -sinks decklink || true"
+		echo "  ${PREFIX}/bin/ffmpeg -hide_banner -sources decklink || true"
+	fi
+}
+
+# ----------------------------
+# MAIN
+# ----------------------------
+
+main() {
+	require_root
+	clear
+
+	detect_hw
+	print_hw_summary
+	choose_profile
+
+	mkdir -p "$BUILD_DIR"
+	cd "$BUILD_DIR"
+
+	export_paths
+
+	if [[ "${DO_REPOS}" == "true" ]]; then
+		install_prereqs
+	fi
+
+	if [[ "${DO_CUDA}" == "true" ]]; then
+		setup_nvidia
+	fi
+
+	if [[ "${DO_DECK}" == "true" ]]; then
+		setup_decklink
+	fi
+
+	# Source builds (only build what user selected)
+	if [[ "${DO_BUILD_NETWORK_LIBS}" == "true" ]]; then
+		build_srt
+	fi
+
+	if [[ "${DO_BUILD_VIDEO_LIBS}" == "true" ]]; then
+		build_x264
+		build_x265
+		build_xevd
+		build_xeve
+	fi
+
+	if [[ "${DO_FFMPEG}" == "true" ]]; then
+		fetch_ffmpeg
+		cd "$BUILD_DIR/ffmpeg-src"
+		if [[ "${DO_DECK}" == "true" && "${DO_PATCH}" == "true" ]]; then
+			apply_decklink_patch
+		fi
+		build_ffmpeg
+		verify_install
+	else
+		yellow "FFmpeg build/install was skipped by user selection."
+	fi
+}
+
+main "$@"
